@@ -459,6 +459,7 @@ window.addEventListener('DOMContentLoaded', ()=>{
   initTheme();
   initSheetGesture();
   initAmountKeyboard();
+  initBackButton();
   if(TEST_MODE){ bootTestMode(); }
   else { bootFirebase(); }
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
@@ -802,6 +803,7 @@ function showApp(){
   document.getElementById('navbar').classList.remove('hidden');
   updTestbar();
   render();
+  armNavGuard();                 // start catching the phone back-gesture now that the app is open
 }
 function updTestbar(){
   if(!TEST_MODE) return;
@@ -1634,6 +1636,26 @@ function doSignOut(){ if(auth) auth.signOut(); closeSheet(); }
    ===================================================================== */
 function openSheetHTML(html){ const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.scrollTop=0; s.innerHTML=html; s.classList.add('show'); document.getElementById('scrim').classList.add('show'); }
 function closeSheet(){ const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.classList.remove('show'); const sc=document.getElementById('scrim'); sc.style.opacity=''; sc.classList.remove('show'); }
+
+/* Phone back-gesture handling: a swipe-back first closes any open sheet
+   (the add/edit "text boxes", settings, backups, etc.); if nothing is open
+   it returns to the Home tab — instead of closing the whole app. We keep one
+   dummy history entry ("guard") on top while the app is open and re-add it
+   after each back, so the gesture is always caught. To leave the app, use the
+   phone's Home button / app switcher. */
+let _navGuarded=false;
+function armNavGuard(){ if(!_navGuarded){ try{ history.pushState({nest:1},''); }catch(e){} _navGuarded=true; } }
+function initBackButton(){
+  window.addEventListener('popstate', ()=>{
+    _navGuarded=false;                                             // our guard was just consumed
+    const appEl=document.getElementById('app');
+    if(!appEl || appEl.classList.contains('hidden')) return;       // before sign-in: let back behave normally
+    const sheet=document.getElementById('sheet');
+    if(sheet && sheet.classList.contains('show')){ closeSheet(); armNavGuard(); return; }  // 1) close an open sheet
+    if(activeTab!=='home'){ setTab('home'); armNavGuard(); return; }                        // 2) jump to Home
+    armNavGuard();                                                                          // 3) home & nothing open → stay
+  });
+}
 
 /* Drag-to-dismiss for the bottom sheet (mobile). The sheet follows your finger
    as you drag down and only closes past a threshold — otherwise it snaps back,
