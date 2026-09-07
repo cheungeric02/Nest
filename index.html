@@ -203,8 +203,9 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .nav-item.active{color:var(--primary)}
 .nav-item.active .ni{background:var(--primary-container);color:var(--on-primary-container)}
 .fab{
-  width:60px;height:60px;border-radius:var(--r-lg);background:var(--primary);color:var(--on-primary);
-  display:grid;place-items:center;font-size:1.8rem;box-shadow:var(--shadow-lg);margin-top:-18px
+  position:fixed;right:16px;bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 16px);z-index:35;
+  width:64px;height:64px;border-radius:var(--r-lg);background:var(--primary);color:var(--on-primary);
+  display:grid;place-items:center;font-size:1.9rem;box-shadow:var(--shadow-lg)
 }
 .fab:active{filter:brightness(.92)}
 
@@ -293,7 +294,7 @@ h1,h2,h3,h4{margin:0;font-weight:600}
     box-shadow:1px 0 12px rgba(0,0,0,.06);border-right:1px solid var(--outline-variant);
   }
   .nav-item{width:100%;min-width:0;padding:11px 4px;gap:4px;font-size:.72rem}
-  .fab{margin:8px 0 12px;width:54px;height:54px;font-size:1.6rem}
+  .fab{right:28px;bottom:28px;width:60px;height:60px;font-size:1.7rem}
   /* content shifts clear of the rail; inner column stays a comfortable width */
   #app{max-width:none;margin:0;padding-left:96px;padding-bottom:36px}
   .topbar,.segmented,.month-nav,.content{max-width:940px;margin-left:auto;margin-right:auto}
@@ -350,9 +351,9 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 <div class="navbar hidden" id="navbar">
   <button class="nav-item" data-tab="home" onclick="setTab('home')"><span class="ni">🏠</span>Home</button>
   <button class="nav-item" data-tab="tx" onclick="setTab('tx')"><span class="ni">📋</span>Activity</button>
-  <button class="fab" onclick="openAdd()">＋</button>
   <button class="nav-item" data-tab="plan" onclick="setTab('plan')"><span class="ni">🎯</span>Plan</button>
   <button class="nav-item" data-tab="insights" onclick="setTab('insights')"><span class="ni">📊</span>Insights</button>
+  <button class="fab" onclick="openAdd()" aria-label="Add">＋</button>
 </div>
 
 <div class="scrim" id="scrim" onclick="closeSheet()"></div>
