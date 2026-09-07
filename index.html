@@ -1643,17 +1643,24 @@ function closeSheet(){ const s=document.getElementById('sheet'); s.style.transit
    dummy history entry ("guard") on top while the app is open and re-add it
    after each back, so the gesture is always caught. To leave the app, use the
    phone's Home button / app switcher. */
-let _navGuarded=false;
-function armNavGuard(){ if(!_navGuarded){ try{ history.pushState({nest:1},''); }catch(e){} _navGuarded=true; } }
+let _guardsUp=false;
+function armNavGuard(){
+  if(_guardsUp) return;
+  // Keep TWO dummy entries so a single back never reaches the app's start URL —
+  // some Android gesture handlers minimise the app the moment it does.
+  try{ history.pushState({nest:1},''); history.pushState({nest:2},''); }catch(e){}
+  _guardsUp=true;
+}
 function initBackButton(){
   window.addEventListener('popstate', ()=>{
-    _navGuarded=false;                                             // our guard was just consumed
     const appEl=document.getElementById('app');
-    if(!appEl || appEl.classList.contains('hidden')) return;       // before sign-in: let back behave normally
+    if(!appEl || appEl.classList.contains('hidden')){ _guardsUp=false; return; } // before sign-in: back behaves normally
+    try{ history.pushState({nest:2},''); }catch(e){}   // restore the entry this back just consumed
+    _guardsUp=true;
     const sheet=document.getElementById('sheet');
-    if(sheet && sheet.classList.contains('show')){ closeSheet(); armNavGuard(); return; }  // 1) close an open sheet
-    if(activeTab!=='home'){ setTab('home'); armNavGuard(); return; }                        // 2) jump to Home
-    armNavGuard();                                                                          // 3) home & nothing open → stay
+    if(sheet && sheet.classList.contains('show')){ closeSheet(); return; }   // 1) close an open sheet
+    if(activeTab!=='home'){ setTab('home'); return; }                        // 2) jump to Home
+    // 3) home & nothing open → do nothing (stay in the app)
   });
 }
 
