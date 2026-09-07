@@ -691,8 +691,8 @@ function bkLabel(day){
   const m=String(day).match(/^(\d{4})-(\d{2})-(\d{2})(?:_(\d{2})(\d{2})(\d{2}))?$/);
   if(!m) return day;
   const dt=new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0));
-  return m[4]!=null ? dt.toLocaleString('en-CA',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})
-                    : dt.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
+  return m[4]!=null ? dt.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})
+                    : dt.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 }
 function openBackups(){
   const which = (activeSpace==='shared' && data.shared) ? 'shared' : 'personal';
@@ -1062,7 +1062,7 @@ function viewTx(){
   let lastDay='';
   filtered.forEach(t=>{
     const day=t.date;
-    if(day!==lastDay){ lastDay=day; h+=`<div class="tx-day">${new Date(t.date+'T00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'})}</div>`; }
+    if(day!==lastDay){ lastDay=day; h+=`<div class="tx-day">${new Date(t.date+'T00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</div>`; }
     const c = t._shared ? {icon:t.icon,name:t.name} : (catById(sp,t.categoryId)||{icon:'❓',name:'Uncategorized'});
     const isInc=t.type==='income';
     const isRec = !t._shared && !!t.recurringId;
