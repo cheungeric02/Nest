@@ -1280,6 +1280,10 @@ function openEdit(id){
 function draftSpace(){ return addDraft.space==='shared'?data.shared:data.personal; }
 function renderAddSheet(isEdit){
   const d=addDraft;
+  // Preserve scroll when re-rendering an already-open sheet (e.g. tapping a toggle),
+  // so the view doesn't jump back to the top.
+  const _sheetEl=document.getElementById('sheet');
+  const _keepScroll = (_sheetEl && _sheetEl.classList.contains('show')) ? _sheetEl.scrollTop : 0;
   if(d.type==='income') d.space=isEdit?d.space:activeSpace;  // income follows the space you're in
   const sp=draftSpace();
   // Category picker ordered by how often each category has been used (most-used first),
@@ -1342,6 +1346,7 @@ function renderAddSheet(isEdit){
   html+=`<div class="field"><label>Note</label><input class="input" value="${d.note}" oninput="addDraft.note=this.value" placeholder="Optional"></div>
     <button class="btn filled block" onclick="saveTx()">${isEdit?'Save changes':(d.repeat!=='none'?'Add recurring '+d.type:'Add '+d.type)}</button>`;
   openSheetHTML(html);
+  if(_keepScroll){ const s=document.getElementById('sheet'); if(s) s.scrollTop=_keepScroll; }
 }
 function setDraftType(t){ addDraft.type=t; addDraft.categoryId=null; renderAddSheet(!!addDraft.id); }
 function setDraftSpace(s){
