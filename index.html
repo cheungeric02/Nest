@@ -1329,7 +1329,6 @@ function renderAddSheet(isEdit){
         .map(k=>{ const op='÷×−+'.includes(k); return `<div class="key${op?' op':''}" onclick="keyPress('${k}')">${k}</div>`; }).join('')}
       <div class="key eq" onclick="keyPress('=')">=</div>
     </div>
-    <div class="sub kb-hint">⌨️ Tip: type the amount — math works too (e.g. 12.50+8, 40/4) · Enter to save</div>
     <div class="field"><label>Category</label><div class="chips">
       ${cats.map(c=>`<button class="chip ${d.categoryId===c.id?'active':''}" onclick="setDraftCat('${c.id}')">${c.icon||'•'} ${c.name}</button>`).join('')}
     </div></div>`;
