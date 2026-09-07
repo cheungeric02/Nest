@@ -881,8 +881,8 @@ function fmtDate(dt){ return dt.getFullYear()+'-'+String(dt.getMonth()+1).padSta
 function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
 function addDays(ds,n){ const [y,m,d]=ds.split('-').map(Number); const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()+n); return fmtDate(dt); }
 function addMonths(ds,n){ const [y,m,d]=ds.split('-').map(Number); let ny=y, nm=m-1+n; ny+=Math.floor(nm/12); nm=((nm%12)+12)%12; const day=Math.min(d, daysInMonth(ny,nm)); return fmtDate(new Date(ny,nm,day)); }
-function nextDate(ds,freq){ return freq==='weekly'?addDays(ds,7):freq==='biweekly'?addDays(ds,14):addMonths(ds,1); }
-const FREQ_LABEL={weekly:'Weekly', biweekly:'Every 2 weeks', monthly:'Monthly'};
+function nextDate(ds,freq){ return freq==='weekly'?addDays(ds,7):freq==='biweekly'?addDays(ds,14):freq==='yearly'?addMonths(ds,12):addMonths(ds,1); }
+const FREQ_LABEL={weekly:'Weekly', biweekly:'Every 2 weeks', monthly:'Monthly', yearly:'Yearly'};
 
 /* ---- shared expense split ---- */
 function computeSplit(sp,amt,paidBy,splitType,customMine,customPct){
@@ -1414,7 +1414,7 @@ function renderAddSheet(isEdit){
     </div>`;
   if(!isEdit){
     html+=`<div class="field"><label>🔁 Repeat</label><div class="chips">
-      ${[['none','One-time'],['weekly','Weekly'],['biweekly','Every 2 weeks'],['monthly','Monthly']].map(([k,lbl])=>`<button class="chip ${d.repeat===k?'active':''}" onclick="setRepeat('${k}')">${lbl}</button>`).join('')}
+      ${[['none','One-time'],['weekly','Weekly'],['biweekly','Every 2 weeks'],['monthly','Monthly'],['yearly','Yearly']].map(([k,lbl])=>`<button class="chip ${d.repeat===k?'active':''}" onclick="setRepeat('${k}')">${lbl}</button>`).join('')}
     </div>${d.repeat!=='none'?`<div class="sub mt8">Auto-adds this ${FREQ_LABEL[d.repeat].toLowerCase()} from the start date. Manage under Plan → Recurring.</div>`:''}</div>`;
   }
   html+=`<div class="field"><label>Note</label><input class="input" value="${d.note}" oninput="addDraft.note=this.value" placeholder="Optional"></div>
