@@ -154,6 +154,12 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .settle{background:var(--tertiary-container);color:var(--on-tertiary-container)}
 .settle .big{font-size:1.5rem;font-weight:800;margin:4px 0}
 
+/* leftover / month-end nudge */
+.leftover-remind{background:var(--primary-container);color:var(--on-primary-container)}
+.leftover-remind .big{font-size:1.6rem;font-weight:800;margin:2px 0 2px}
+.leftover-remind .sub{color:var(--on-primary-container);opacity:.85}
+.leftover-done{background:var(--surface-container-high)}
+
 /* transactions */
 .tx-day{font-size:.8rem;color:var(--on-surface-variant);font-weight:600;margin:14px 4px 6px}
 .tx{display:flex;align-items:center;gap:12px;background:var(--surface-container-low);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow)}
@@ -994,6 +1000,32 @@ function viewHome(){
     </div>`;
   }
 
+  // leftover / month-end nudge — money still unallocated after spending + savings goal
+  const leftover = Math.round((savings - goal)*100)/100;
+  if(income>0 && leftover>0.5){
+    const nowYM = ymKey(new Date());
+    const isPast = viewMonth < nowYM, isCur = viewMonth === nowYM;
+    let daysLeft = 99;
+    if(isCur){ const t=new Date(); daysLeft = new Date(t.getFullYear(), t.getMonth()+1, 0).getDate() - t.getDate(); }
+    const remind = isPast || (isCur && daysLeft<=5);
+    const acked = !!((sp.settings.leftoverAck||{})[viewMonth]);
+    const goalNote = goal>0 ? ` and your ${fmt(goal)} savings goal` : '';
+    if(acked){
+      h+=`<div class="card leftover-done"><div class="between"><span>✅ <b>${fmt(leftover)}</b> set aside for savings this month</span>
+        <button class="btn text" style="padding:4px 10px" onclick="unackLeftover('${viewMonth}')">Undo</button></div></div>`;
+    } else if(remind){
+      h+=`<div class="card leftover-remind">
+        <h3>💰 Money to put away</h3>
+        <div class="big">${fmt(leftover)} left over</div>
+        <div class="sub">${isPast?'This month wrapped up and you':'The month is almost over — you'} came in under budget after spending${goalNote}. Move it into savings or investments so it doesn't get spent next month.</div>
+        <button class="btn filled block mt8" onclick="ackLeftover('${viewMonth}')">✓ I moved it to savings</button>
+      </div>`;
+    } else {
+      h+=`<div class="card leftover-track"><div class="between"><span>💡 On pace for <b>${fmt(leftover)}</b> left over</span><span class="pill ok">${daysLeft}d left</span></div>
+        <div class="sub" style="margin-top:4px">After spending${goalNote}, you're on track to have this spare at month-end — great to move into savings or investments.</div></div>`;
+    }
+  }
+
   // 50/30/20
   h+=view503020(sp,mtx,income);
 
@@ -1047,6 +1079,8 @@ function monthNav(){
   </div>`;
 }
 function changeMonth(d){ const nd=parseYM(viewMonth); nd.setMonth(nd.getMonth()+d); viewMonth=ymKey(nd); render(); }
+function ackLeftover(ym){ const sp=curSpace(); sp.settings=sp.settings||{}; sp.settings.leftoverAck=sp.settings.leftoverAck||{}; sp.settings.leftoverAck[ym]=true; saveSpace(activeSpace); render(); toast('Nice — logged as set aside 💰'); }
+function unackLeftover(ym){ const sp=curSpace(); if(sp.settings&&sp.settings.leftoverAck){ delete sp.settings.leftoverAck[ym]; } saveSpace(activeSpace); render(); }
 
 /* =====================================================================
    VIEW: TRANSACTIONS
