@@ -448,10 +448,11 @@ function bootFirebase(){
   auth.onAuthStateChanged(async u=>{
     if(u){
       user={uid:u.uid,name:u.displayName||'Me',email:u.email,photo:u.photoURL||''};
-      await db.ref('users/'+u.uid).update({name:user.name,email:user.email,photo:user.photo});
+      signinMsg('');
+      showApp();
       attachPersonal();
       attachSharedIfMember();
-      showApp();
+      db.ref('users/'+u.uid).update({name:user.name,email:user.email,photo:user.photo}).catch(()=>{});
     } else {
       user=null; document.getElementById('signin').classList.remove('hidden');
       document.getElementById('app').classList.add('hidden');
@@ -481,6 +482,8 @@ function attachPersonal(){
     data.personal = v?normalizeSpace(v):seedFirstTime('personal');
     if(!v){ db.ref('personal/'+user.uid).set(stripForSave(data.personal)); }
     if(!TEST_MODE) render();
+  }, err=>{
+    if(err && err.code==='PERMISSION_DENIED') toast('Database rules not set yet — publish the security rules in Firebase.');
   });
 }
 function attachShared(sid){
