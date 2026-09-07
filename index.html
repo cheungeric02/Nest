@@ -239,6 +239,12 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .type-toggle button{padding:8px 20px;border-radius:var(--r-full);background:var(--surface-container-high);font-weight:600;font-size:.9rem}
 .type-toggle button.active.exp{background:var(--secondary-container);color:var(--on-secondary-container)}
 .type-toggle button.active.inc{background:var(--tertiary-container);color:var(--on-tertiary-container)}
+/* combined header row: Expense/Income toggle + Personal/Shared chooser on one line */
+.addhead{display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap;margin:10px 0 14px}
+.addhead .type-toggle{margin:0;gap:5px}
+.addhead .type-toggle button{padding:7px 11px}
+.addhead .space-chips{gap:5px;flex-wrap:nowrap}
+.addhead .space-chips .chip{padding:7px 11px;font-size:.84rem}
 
 /* keypad */
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
@@ -1376,19 +1382,23 @@ function renderAddSheet(){
     .map(x=>x.c);
   const shared=d.space==='shared';
   let members = shared? Object.entries((sp&&sp.members)||{}).map(([uidx,m])=>({uid:uidx,name:m.name||'?'})):[];
+  const showChooser = d.type==='expense' && !isEdit && !isRec;  // Personal/Shared only on a fresh expense add
+  const toggleBtns=`<button class="exp ${d.type==='expense'?'active':''}" onclick="setDraftType('expense')">Expense</button>
+      <button class="inc ${d.type==='income'?'active':''}" onclick="setDraftType('income')">Income</button>`;
   let html=`<div class="grabber"></div>
     <div class="between"><h2 style="margin:0">${isRec?'Edit recurring':(isEdit?'Edit':'Add')} ${d.type}</h2>
-      ${isEdit?`<button class="icon-btn" onclick="deleteTx('${d.id}')" title="Delete">🗑️</button>`:''}</div>
-    <div class="type-toggle">
-      <button class="exp ${d.type==='expense'?'active':''}" onclick="setDraftType('expense')">Expense</button>
-      <button class="inc ${d.type==='income'?'active':''}" onclick="setDraftType('income')">Income</button>
-    </div>`;
-  // Personal / Shared chooser — expenses only, on add (edits & recurring-rule edits stay in their space)
-  if(d.type==='expense' && !isEdit && !isRec){
-    html+=`<div class="field" style="margin-top:8px"><label>Add to</label><div class="chips">
-      <button class="chip ${d.space==='personal'?'active':''}" onclick="setDraftSpace('personal')">👤 Personal</button>
-      <button class="chip ${d.space==='shared'?'active':''}" onclick="setDraftSpace('shared')">🤝 Shared</button>
-    </div>${d.space==='shared'?`<div class="sub mt8">Split it below — your share shows on your Personal budget too.</div>`:''}</div>`;
+      ${isEdit?`<button class="icon-btn" onclick="deleteTx('${d.id}')" title="Delete">🗑️</button>`:''}</div>`;
+  if(showChooser){
+    // type toggle + Personal/Shared chooser share one row to save vertical space
+    html+=`<div class="addhead">
+      <div class="type-toggle">${toggleBtns}</div>
+      <div class="chips space-chips">
+        <button class="chip ${d.space==='personal'?'active':''}" onclick="setDraftSpace('personal')">Personal</button>
+        <button class="chip ${d.space==='shared'?'active':''}" onclick="setDraftSpace('shared')">Shared</button>
+      </div>
+    </div>${d.space==='shared'?`<div class="sub" style="margin:-4px 0 12px">Split it below — your share shows on your Personal budget too.</div>`:''}`;
+  } else {
+    html+=`<div class="type-toggle">${toggleBtns}</div>`;
   }
   html+=`<div class="amount-display">
       <div><span class="cur">${CUR_SYMBOL}</span><span class="num" id="amtNum">${d.amount||'0'}</span></div>
@@ -1790,7 +1800,7 @@ function initSheetGesture(){
   const start=(y,target)=>{
     dragging=false;
     // start a drag only from the grabber/header, or when the sheet is scrolled to the top
-    const fromHandle = target && target.closest && target.closest('.grabber, h2, .between, .type-toggle');
+    const fromHandle = target && target.closest && target.closest('.grabber, h2, .between, .type-toggle, .addhead');
     candidate = !!fromHandle || sheet.scrollTop<=0;
     startY=y; curY=y;
   };
