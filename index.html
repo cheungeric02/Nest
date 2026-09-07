@@ -17,7 +17,7 @@
   --primary-container:#bcefc9; --on-primary-container:#00210f;
   --secondary:#8a5a2b; --secondary-container:#ffdcb8; --on-secondary-container:#2c1600;
   --tertiary:#3c6472; --tertiary-container:#c0e9fa; --on-tertiary-container:#001f28;
-  --error:#ba1a1a; --error-container:#ffdad6; --on-error-container:#410002;
+  --error:#ba1a1a; --error-container:#ffdad6; --on-error-container:#410002; --error-deep:#7a0010;
   --surface:#f7fbf3; --on-surface:#181d18;
   --surface-dim:#d7dbd2; --surface-bright:#f7fbf3;
   --surface-container-lowest:#ffffff; --surface-container-low:#f1f5ec;
@@ -33,7 +33,7 @@
   --primary:#a1d3ac; --on-primary:#093920; --primary-container:#235135; --on-primary-container:#bcefc9;
   --secondary:#f5bd7e; --secondary-container:#6a4014; --on-secondary-container:#ffdcb8;
   --tertiary:#a4cddd; --tertiary-container:#234c59; --on-tertiary-container:#c0e9fa;
-  --error:#ffb4ab; --error-container:#93000a; --on-error-container:#ffdad6;
+  --error:#ffb4ab; --error-container:#93000a; --on-error-container:#ffdad6; --error-deep:#d1332b;
   --surface:#0f140f; --on-surface:#dfe4db;
   --surface-dim:#0f140f; --surface-bright:#353a34;
   --surface-container-lowest:#0a0f0a; --surface-container-low:#181d18;
@@ -47,7 +47,7 @@
     --primary:#a1d3ac; --on-primary:#093920; --primary-container:#235135; --on-primary-container:#bcefc9;
     --secondary:#f5bd7e; --secondary-container:#6a4014; --on-secondary-container:#ffdcb8;
     --tertiary:#a4cddd; --tertiary-container:#234c59; --on-tertiary-container:#c0e9fa;
-    --error:#ffb4ab; --error-container:#93000a; --on-error-container:#ffdad6;
+    --error:#ffb4ab; --error-container:#93000a; --on-error-container:#ffdad6; --error-deep:#d1332b;
     --surface:#0f140f; --on-surface:#dfe4db;
     --surface-dim:#0f140f; --surface-bright:#353a34;
     --surface-container-lowest:#0a0f0a; --surface-container-low:#181d18;
@@ -141,8 +141,8 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 /* over-budget bar: budgeted portion + a red tail that grows with how far past budget you went */
 .track.split{display:flex}
 .track .seg{height:100%;flex:none}
-.track .seg.bud{background:var(--primary)}
-.track .seg.ovr{background:var(--error);box-shadow:inset 2px 0 0 var(--surface)}
+.track .seg.bud{background:var(--error)}
+.track .seg.ovr{background:var(--error-deep);box-shadow:inset 2px 0 0 var(--surface)}
 .over-note{font-size:.72rem;color:var(--error);font-weight:600;margin-top:5px}
 .pill{font-size:.7rem;padding:2px 8px;border-radius:var(--r-full);font-weight:600}
 .pill.over{background:var(--error-container);color:var(--on-error-container)}
