@@ -138,6 +138,12 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .fill{height:100%;background:var(--primary);border-radius:var(--r-full);transition:width .4s}
 .fill.over{background:var(--error)}
 .fill.warn{background:var(--warn)}
+/* over-budget bar: budgeted portion + a red tail that grows with how far past budget you went */
+.track.split{display:flex}
+.track .seg{height:100%;flex:none}
+.track .seg.bud{background:var(--primary)}
+.track .seg.ovr{background:var(--error);box-shadow:inset 2px 0 0 var(--surface)}
+.over-note{font-size:.72rem;color:var(--error);font-weight:600;margin-top:5px}
 .pill{font-size:.7rem;padding:2px 8px;border-radius:var(--r-full);font-weight:600}
 .pill.over{background:var(--error-container);color:var(--on-error-container)}
 .pill.ok{background:var(--primary-container);color:var(--on-primary-container)}
@@ -1080,10 +1086,21 @@ function viewHome(){
     h+=`<div class="sub">No category targets set yet. <a onclick="setTab('plan')" style="color:var(--primary);text-decoration:underline">Set some in Plan →</a></div>`;
   } else {
     withTargets.forEach(({c,spent,tgt})=>{
-      const pct=Math.min(100,(spent/tgt)*100); const over=spent>tgt;
+      const over=spent>tgt;
+      let bar, note='';
+      if(over){
+        // scale the bar to what was actually spent; the budget sits partway and the red
+        // tail past it grows the further over you go — the "gravity" Eric wants to see.
+        const budPos=Math.max(8,(tgt/spent)*100);
+        bar=`<div class="track split"><div class="seg bud" style="width:${budPos.toFixed(1)}%"></div><div class="seg ovr" style="width:${(100-budPos).toFixed(1)}%"></div></div>`;
+        note=`<div class="over-note">⚠️ ${fmt0(spent-tgt)} over · +${Math.round(((spent-tgt)/tgt)*100)}%</div>`;
+      } else {
+        const pct=Math.min(100,(spent/tgt)*100);
+        bar=`<div class="track"><div class="fill ${pct>85?'warn':''}" style="width:${pct}%"></div></div>`;
+      }
       h+=`<div class="bar-row"><div class="top"><span>${c.icon||'•'} ${c.name}</span>
         <span class="amt"><b>${fmt0(spent)}</b> / ${fmt0(tgt)}</span></div>
-        <div class="track"><div class="fill ${over?'over':(pct>85?'warn':'')}" style="width:${pct}%"></div></div></div>`;
+        ${bar}${note}</div>`;
     });
   }
   h+=`</div>`;
@@ -1127,15 +1144,35 @@ function unackLeftover(ym){ const sp=curSpace(); if(sp.settings&&sp.settings.lef
    VIEW: TRANSACTIONS
    ===================================================================== */
 let txFilter='all';
+let txCatFilter='all';
 function viewTx(){
   const sp=curSpace();
   let h=monthNav();
   const mtx=effMonthTx(sp,viewMonth).slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
-  const filtered = txFilter==='all'?mtx : mtx.filter(t=>t.type===txFilter);
-  h+=`<div class="chips mb8" style="margin:0 0 12px">
+  // categories present in this month, for the filter dropdown
+  const present=[...new Set(mtx.map(t=>t.categoryId).filter(Boolean))]
+    .map(id=>({id,c:catById(sp,id)})).filter(x=>x.c)
+    .sort((a,b)=>(a.c.name||'').localeCompare(b.c.name||''));
+  if(txCatFilter!=='all' && !present.some(x=>x.id===txCatFilter)) txCatFilter='all'; // stale pick (e.g. after month change)
+  const filtered = mtx.filter(t=>
+    (txFilter==='all'||t.type===txFilter) &&
+    (txCatFilter==='all'||t.categoryId===txCatFilter));
+  h+=`<div class="chips mb8" style="margin:0 0 10px">
     ${['all','expense','income'].map(f=>`<button class="chip small ${txFilter===f?'active':''}" onclick="txFilter='${f}';render()">${f==='all'?'All':f==='expense'?'Expenses':'Income'}</button>`).join('')}
   </div>`;
-  if(!filtered.length){ h+=`<div class="empty"><div class="em">🗒️</div>No transactions this month.<br>Tap ＋ to add one.</div>`; return h; }
+  if(present.length){
+    h+=`<div class="field" style="margin:0 0 12px"><select class="input" onchange="txCatFilter=this.value;render()">
+      <option value="all"${txCatFilter==='all'?' selected':''}>All categories</option>
+      ${present.map(x=>`<option value="${x.id}"${txCatFilter===x.id?' selected':''}>${x.c.icon||'•'} ${x.c.name}</option>`).join('')}
+    </select></div>`;
+  }
+  if(!filtered.length){
+    const filtered_out = (txFilter!=='all'||txCatFilter!=='all') && mtx.length;
+    h+= filtered_out
+      ? `<div class="empty"><div class="em">🔍</div>Nothing matches this filter.<br><a onclick="txFilter='all';txCatFilter='all';render()" style="color:var(--primary);text-decoration:underline">Clear filters</a></div>`
+      : `<div class="empty"><div class="em">🗒️</div>No transactions this month.<br>Tap ＋ to add one.</div>`;
+    return h;
+  }
   let lastDay='';
   filtered.forEach(t=>{
     const day=t.date;
@@ -1171,15 +1208,17 @@ function viewPlan(){
   const pay=+(sp.settings&&sp.settings.paycheck)||0;
   let h='';
 
-  // income basis
-  h+=`<div class="card"><h3>💵 Your income</h3>
-    <div class="field"><label>Paycheck (take-home, every 2 weeks)</label>
-      <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
-      <input class="input" type="number" inputmode="decimal" value="${pay||''}" placeholder="e.g. 1800"
-        onchange="setPaycheck(this.value)"></div></div>
-    ${mo>0?`<div class="sub">≈ <b>${fmt0(mo)}</b> / month (paycheck × 26 ÷ 12). Powers the recommendations below and any % budgets.</div>`
-          :`<div class="sub">Add this to unlock recommended budgets based on the 50 / 30 / 20 guideline.</div>`}
-  </div>`;
+  // income basis — personal only; a shared budget has no single "your income"
+  if(activeSpace!=='shared'){
+    h+=`<div class="card"><h3>💵 Your income</h3>
+      <div class="field"><label>Paycheck (take-home, every 2 weeks)</label>
+        <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
+        <input class="input" type="number" inputmode="decimal" value="${pay||''}" placeholder="e.g. 1800"
+          onchange="setPaycheck(this.value)"></div></div>
+      ${mo>0?`<div class="sub">≈ <b>${fmt0(mo)}</b> / month (paycheck × 26 ÷ 12). Powers the recommendations below and any % budgets.</div>`
+            :`<div class="sub">Add this to unlock recommended budgets based on the 50 / 30 / 20 guideline.</div>`}
+    </div>`;
+  }
 
   // savings goal
   const recSav = mo>0 ? Math.round(mo*REC_SAVINGS_PCT/100) : 0;
