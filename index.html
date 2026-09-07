@@ -255,6 +255,33 @@ h1,h2,h3,h4{margin:0;font-weight:600}
   .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
   .two-col .card{margin-bottom:0}
 }
+
+/* responsive: desktop / web — bottom bar becomes a left nav rail */
+@media(min-width:900px){
+  /* bottom nav -> vertical left rail */
+  .navbar{
+    flex-direction:column;justify-content:flex-start;align-items:center;
+    left:0;right:auto;top:0;bottom:0;width:96px;height:100vh;
+    padding:22px 0 24px;gap:8px;margin:0;max-width:none;
+    box-shadow:1px 0 12px rgba(0,0,0,.06);border-right:1px solid var(--outline-variant);
+  }
+  .nav-item{width:100%;min-width:0;padding:11px 4px;gap:4px;font-size:.72rem}
+  .fab{margin:8px 0 12px;width:54px;height:54px;font-size:1.6rem}
+  /* content shifts clear of the rail; inner column stays a comfortable width */
+  #app{max-width:none;margin:0;padding-left:96px;padding-bottom:36px}
+  .topbar,.segmented,.month-nav,.content{max-width:940px;margin-left:auto;margin-right:auto}
+  .topbar{padding-top:20px}
+  .segmented{margin-top:6px;margin-bottom:14px}
+  .month-nav{margin-top:0;margin-bottom:16px}
+  /* toast centered over the content area, not the whole window */
+  .toast{left:calc(50% + 48px);bottom:24px}
+}
+
+/* wide desktop — cap the reading column and center it in the extra space */
+@media(min-width:1280px){
+  .topbar,.segmented,.month-nav,.content{max-width:1040px}
+  .toast{left:calc(50% + 48px)}
+}
 </style>
 </head>
 <body>
@@ -943,9 +970,16 @@ function viewPlan(){
   return h;
 }
 function setPaycheck(v){ curSpace().settings.paycheck=+v||0; saveSpace(activeSpace); render(); toast('Income updated'); }
-function applyRecSavings(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0)return; sp.settings.savingsGoal=Math.round(mo*REC_SAVINGS_PCT/100); saveSpace(activeSpace); render(); toast('Recommended savings applied'); }
-function applyRec(id){ const sp=curSpace(); const mo=monthlySalary(sp); const c=catById(sp,id); if(!c||mo<=0||REC_PCT[c.name]==null)return; c.useIncomePct=false; c.target=Math.round(mo*REC_PCT[c.name]/100); saveSpace(activeSpace); render(); toast(c.name+' set to recommended'); }
-function applyAllRec(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0){toast('Add your income first');return;} (sp.categories||[]).filter(c=>c.type==='expense'&&REC_PCT[c.name]!=null).forEach(c=>{ c.useIncomePct=false; c.target=Math.round(mo*REC_PCT[c.name]/100); }); sp.settings.savingsGoal=Math.round(mo*REC_SAVINGS_PCT/100); saveSpace(activeSpace); render(); toast('All recommendations applied'); }
+function applyRecSavings(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0)return; const rec=Math.round(mo*REC_SAVINGS_PCT/100);
+  if(!confirm(`Set your monthly savings goal to ${fmt0(rec)}?\n\nThat's the recommended ${REC_SAVINGS_PCT}% of your income and will replace your current goal${sp.settings.savingsGoal?' of '+fmt0(sp.settings.savingsGoal):''}.`)) return;
+  sp.settings.savingsGoal=rec; saveSpace(activeSpace); render(); toast('Recommended savings applied'); }
+function applyRec(id){ const sp=curSpace(); const mo=monthlySalary(sp); const c=catById(sp,id); if(!c||mo<=0||REC_PCT[c.name]==null)return; const rec=Math.round(mo*REC_PCT[c.name]/100);
+  if(!confirm(`Set the ${c.name} budget to ${fmt0(rec)}/mo?\n\nThat's the recommended ${REC_PCT[c.name]}% of your income and will replace this category's current target.`)) return;
+  c.useIncomePct=false; c.target=rec; saveSpace(activeSpace); render(); toast(c.name+' set to recommended'); }
+function applyAllRec(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0){toast('Add your income first');return;}
+  const n=(sp.categories||[]).filter(c=>c.type==='expense'&&REC_PCT[c.name]!=null).length;
+  if(!confirm(`Apply all recommended budgets?\n\nThis overwrites the targets on ${n} categories and your savings goal with the 50 / 30 / 20 amounts for your income. Any custom targets you set will be replaced.`)) return;
+  (sp.categories||[]).filter(c=>c.type==='expense'&&REC_PCT[c.name]!=null).forEach(c=>{ c.useIncomePct=false; c.target=Math.round(mo*REC_PCT[c.name]/100); }); sp.settings.savingsGoal=Math.round(mo*REC_SAVINGS_PCT/100); saveSpace(activeSpace); render(); toast('All recommendations applied'); }
 function setSavingsGoal(v){ curSpace().settings.savingsGoal=+v||0; saveSpace(activeSpace); toast('Savings goal updated'); }
 function setCatMode(id,useP){ const c=catById(curSpace(),id); if(c){c.useIncomePct=useP; saveSpace(activeSpace); render();} }
 function setCatTarget(id,kind,v){ const c=catById(curSpace(),id); if(!c)return; if(kind==='pct')c.targetPct=+v||0; else c.target=+v||0; saveSpace(activeSpace); render(); }
