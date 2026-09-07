@@ -166,6 +166,36 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .leftover-remind .sub{color:var(--on-primary-container);opacity:.85}
 .leftover-done{background:var(--surface-container-high)}
 
+/* on-pace projection — single-bar bridge */
+.pace .head2{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.pace .hero{font-size:1.95rem;font-weight:800;color:var(--primary);line-height:1}
+.pace .hero.muted{color:var(--on-surface-variant)}
+.pace .hero.neg{color:var(--error)}
+.pace .cap{font-size:.85rem;color:var(--on-surface-variant);margin-top:4px}
+.pace .month{font-size:.72rem;color:var(--on-surface-variant);text-align:right;line-height:1.35;flex-shrink:0}
+.pace-bar{position:relative;height:38px;border-radius:var(--r-sm);overflow:hidden;margin-top:20px;display:flex;background:var(--surface-container-high)}
+.pace-bar .seg{height:100%;transition:width .4s}
+.pace-bar .s-net{background:var(--primary)}
+.pace-bar .s-inc{background:var(--primary-container);background-image:repeating-linear-gradient(135deg,transparent 0 6px,color-mix(in srgb,var(--primary) 42%,transparent) 6px 12px)}
+.pace-bar .s-spend{position:absolute;top:0;right:0;height:100%;background:var(--surface-container-highest);background-image:repeating-linear-gradient(135deg,transparent 0 5px,color-mix(in srgb,var(--on-surface) 9%,transparent) 5px 10px)}
+.pace-bar .divider{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--on-surface);border-radius:2px}
+.pace-brk{display:flex;margin-top:8px;font-size:.76rem}
+.pace-brk .k{color:var(--on-surface-variant)}
+.pace-brk .keep b{color:var(--primary)}
+.pace-brk .spend-lbl{text-align:right}
+.pace-list{margin-top:16px;border-top:1px solid var(--outline-variant);padding-top:10px}
+.pace-li{display:flex;justify-content:space-between;font-size:.88rem;padding:5px 0}
+.pace-li .nm{color:var(--on-surface-variant);display:flex;align-items:center;gap:9px}
+.pace-li .v{font-weight:700}
+.pace-li .v.pos{color:var(--success)} .pace-li .v.neg{color:var(--error)}
+.pace-li.tot{border-top:1px solid var(--outline-variant);margin-top:5px;padding-top:9px}
+.pace-li.tot .nm{color:var(--on-surface);font-weight:700} .pace-li.tot .v{color:var(--primary)}
+.pace-li.tot .v.neg{color:var(--error)}
+.pace-dot{width:12px;height:12px;border-radius:4px;flex:none}
+.pace-dot.net{background:var(--primary)}
+.pace-dot.inc{background:var(--primary-container);background-image:repeating-linear-gradient(135deg,transparent 0 3px,color-mix(in srgb,var(--primary) 55%,transparent) 3px 6px)}
+.pace-dot.spend{background:var(--surface-container-highest);background-image:repeating-linear-gradient(135deg,transparent 0 3px,color-mix(in srgb,var(--on-surface) 18%,transparent) 3px 6px)}
+
 /* plan income-split donut */
 .pie-wrap{display:flex;flex-direction:column;align-items:center;gap:16px}
 .pie-svg{width:180px;max-width:60%;height:auto}
@@ -1118,17 +1148,7 @@ function viewHome(){
       <button class="btn filled block mt8" onclick="ackLeftover('${viewMonth}')">✓ I moved it to savings</button>
     </div>`;
   } else if(isCur && !remind && (income>0 || expectedIncome>0 || remainingBudget>0)){
-    const parts = `${fmt0(savings)} saved so far`
-      + (expectedIncome>0 ? ` + ${fmt0(expectedIncome)} still to come` : '')
-      + (remainingBudget>0 ? ` − ${fmt0(remainingBudget)} left to spend` : '')
-      + (goal>0 ? ` − ${fmt0(goal)} goal` : '');
-    if(projLeftover>0.5){
-      h+=`<div class="card leftover-track"><div class="between"><span>💡 On pace for <b>${fmt(projLeftover)}</b> left over</span><span class="pill ok">${daysLeft}d left</span></div>
-        <div class="sub" style="margin-top:4px">Projected for month-end — ${parts}. Great to move into savings or investments.</div></div>`;
-    } else {
-      h+=`<div class="card leftover-track"><div class="between"><span>💡 On pace to use your full budget this month</span><span class="pill">${daysLeft}d left</span></div>
-        <div class="sub" style="margin-top:4px">Projected for month-end — ${parts}. Come in under your budgets and the difference becomes savings.</div></div>`;
-    }
+    h+=onPaceCard(savings, expectedIncome, remainingBudget);
   }
   }
 
@@ -1185,6 +1205,65 @@ function view503020(sp,mtx,income){
       <span class="k"><span class="dot" style="background:var(--tertiary)"></span>Savings ${p(saved)}% <span class="muted">/20</span></span>
     </div>
     <div class="sub mt8">${income>0?'Based on this month’s income.':'Add income this month to see your true split.'}</div>
+  </div>`;
+}
+
+// Home "on pace" card: one continuous bar bridging what's banked, what's still
+// coming, and what's left to spend → projected net saved for the month.
+function onPaceCard(savings, expectedIncome, remainingBudget){
+  const netSoFar = Math.round(savings*100)/100;
+  const inc      = Math.round((expectedIncome||0)*100)/100;
+  const spend    = Math.round((remainingBudget||0)*100)/100;
+  const projNet  = Math.round((netSoFar + inc - spend)*100)/100;
+
+  const netPos = Math.max(0, netSoFar);           // solid-green length (loss shown in list only)
+  const pool   = netPos + inc;                     // total money in play
+  const scale  = Math.max(pool, spend, 1);
+  const pct    = v => Math.max(0, Math.min(100, (v/scale)*100));
+  const netW   = pct(netPos), incW = pct(inc), spendW = pct(Math.min(spend, scale));
+  const keepW  = Math.max(0, Math.min(100, (projNet/scale)*100));
+
+  const t=new Date();
+  const dim=new Date(t.getFullYear(), t.getMonth()+1, 0).getDate();
+  const monLbl=t.toLocaleString('en-US',{month:'short'});
+
+  const good = projNet>0.5;
+  const heroCls = good ? '' : (projNet<-0.5 ? 'neg' : 'muted');
+  const cap = good ? 'projected net saved this month'
+            : (projNet<-0.5 ? 'projected shortfall this month'
+                            : 'on pace to use your full budget');
+
+  let bar = `<div class="pace-bar">`;
+  if(netW>0.3) bar+=`<div class="seg s-net" style="width:${netW.toFixed(1)}%"></div>`;
+  if(incW>0.3) bar+=`<div class="seg s-inc" style="width:${incW.toFixed(1)}%"></div>`;
+  if(spendW>0.3) bar+=`<div class="s-spend" style="width:${spendW.toFixed(1)}%"></div>`;
+  if(spend>0.5 && projNet>0.5 && keepW>1 && keepW<99) bar+=`<div class="divider" style="left:${keepW.toFixed(1)}%"></div>`;
+  bar+=`</div>`;
+
+  let brk='';
+  if(spend>0.5 && projNet>0.5){
+    brk=`<div class="pace-brk">
+      <div class="keep" style="width:${keepW.toFixed(1)}%"><span class="k">keep · </span><b>${fmt0(projNet)}</b></div>
+      <div class="spend-lbl" style="width:${(100-keepW).toFixed(1)}%"><span class="k">to spend · ${fmt0(spend)}</span></div>
+    </div>`;
+  }
+
+  let list=`<div class="pace-list">`;
+  list+=`<div class="pace-li"><span class="nm"><span class="pace-dot net"></span>Net saved so far</span><span class="v ${netSoFar<0?'neg':'pos'}">${netSoFar<0?'−':'+'}${fmt0(netSoFar)}</span></div>`;
+  if(inc>0.5)   list+=`<div class="pace-li"><span class="nm"><span class="pace-dot inc"></span>Income still to come</span><span class="v pos">+${fmt0(inc)}</span></div>`;
+  if(spend>0.5) list+=`<div class="pace-li"><span class="nm"><span class="pace-dot spend"></span>Budget left to spend</span><span class="v neg">−${fmt0(spend)}</span></div>`;
+  list+=`<div class="pace-li tot"><span class="nm">Projected net saved</span><span class="v ${projNet<0?'neg':''}">${projNet<0?'−':''}${fmt0(projNet)}</span></div>`;
+  list+=`</div>`;
+
+  return `<div class="card pace">
+    <div class="head2">
+      <div>
+        <div class="hero ${heroCls}">${projNet<0?'−':''}${fmt0(projNet)}</div>
+        <div class="cap">${cap}</div>
+      </div>
+      <div class="month">${monLbl} · day ${t.getDate()}<br>of ${dim}</div>
+    </div>
+    ${bar}${brk}${list}
   </div>`;
 }
 
