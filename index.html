@@ -166,6 +166,18 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .leftover-remind .sub{color:var(--on-primary-container);opacity:.85}
 .leftover-done{background:var(--surface-container-high)}
 
+/* plan income-split donut */
+.pie-wrap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.pie-svg{width:180px;max-width:60%;height:auto}
+.pie-legend{width:100%;display:flex;flex-direction:column;gap:9px}
+.pie-legend .row{display:flex;align-items:center;gap:10px;font-size:.9rem}
+.pie-legend .sw{width:13px;height:13px;border-radius:4px;flex-shrink:0}
+.pie-legend .nm{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pie-legend .pc{font-weight:800;min-width:42px;text-align:right}
+.pie-legend .am{color:var(--on-surface-variant);min-width:66px;text-align:right}
+.pct-income{font-size:.78rem;color:var(--on-surface-variant);margin-top:5px}
+.pct-income b{color:var(--primary)}
+
 /* transactions */
 .tx-day{font-size:.8rem;color:var(--on-surface-variant);font-weight:600;margin:14px 4px 6px}
 .tx{display:flex;align-items:center;gap:12px;background:var(--surface-container-low);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow)}
@@ -971,6 +983,25 @@ function runRecurring(sp){
   });
   if(changed) saveSpace(spaceKeyOf(sp));
 }
+// Income from recurring rules still due later THIS (calendar) month but not yet received —
+// i.e. paycheques you're on track to get. Mirrors runRecurring's occurrence stepping.
+function upcomingIncomeThisMonth(sp){
+  const rules=asArray(sp&&sp.recurring); if(!rules.length) return 0;
+  const todayS=todayStr(); const t=new Date();
+  const endS=fmtDate(new Date(t.getFullYear(), t.getMonth()+1, 0)); // last day of current month
+  let sum=0;
+  rules.forEach(rule=>{
+    if(rule.active===false || rule.type!=='income' || !rule.anchor) return;
+    const existing=new Set(asArray(sp.transactions).filter(x=>x.recurringId===rule.id).map(x=>x.occ));
+    let occ = rule.lastGen ? nextDate(rule.lastGen,rule.freq) : rule.anchor;
+    let guard=0;
+    while(occ<=endS && guard<500){
+      if(occ>todayS && !existing.has(occ)) sum += (+rule.amount||0);
+      occ=nextDate(occ,rule.freq); guard++;
+    }
+  });
+  return sum;
+}
 function incomeBasis(sp,ym){ // salary if set, else this month's income, fallback to 3-mo avg
   const sal=monthlySalary(sp); if(sal>0) return sal;
   const im=sumBy(monthTx(sp,ym),'income'); if(im>0) return im;
@@ -1048,29 +1079,49 @@ function viewHome(){
   }
 
   // leftover / month-end nudge — money still unallocated after spending + savings goal
-  const leftover = Math.round((savings - goal)*100)/100;
-  if(income>0 && leftover>0.5){
-    const nowYM = ymKey(new Date());
-    const isPast = viewMonth < nowYM, isCur = viewMonth === nowYM;
-    let daysLeft = 99;
-    if(isCur){ const t=new Date(); daysLeft = new Date(t.getFullYear(), t.getMonth()+1, 0).getDate() - t.getDate(); }
-    const remind = isPast || (isCur && daysLeft<=5);
-    const acked = !!((sp.settings.leftoverAck||{})[viewMonth]);
-    const goalNote = goal>0 ? ` and your ${fmt(goal)} savings goal` : '';
-    if(acked){
-      h+=`<div class="card leftover-done"><div class="between"><span>✅ <b>${fmt(leftover)}</b> set aside for savings this month</span>
-        <button class="btn text" style="padding:4px 10px" onclick="unackLeftover('${viewMonth}')">Undo</button></div></div>`;
-    } else if(remind){
-      h+=`<div class="card leftover-remind">
-        <h3>💰 Money to put away</h3>
-        <div class="big">${fmt(leftover)} left over</div>
-        <div class="sub">${isPast?'This month wrapped up and you':'The month is almost over — you'} came in under budget after spending${goalNote}. Move it into savings or investments so it doesn't get spent next month.</div>
-        <button class="btn filled block mt8" onclick="ackLeftover('${viewMonth}')">✓ I moved it to savings</button>
-      </div>`;
-    } else {
-      h+=`<div class="card leftover-track"><div class="between"><span>💡 On pace for <b>${fmt(leftover)}</b> left over</span><span class="pill ok">${daysLeft}d left</span></div>
-        <div class="sub" style="margin-top:4px">After spending${goalNote}, you're on track to have this spare at month-end — great to move into savings or investments.</div></div>`;
-    }
+  {
+  const nowYM = ymKey(new Date());
+  const isPast = viewMonth < nowYM, isCur = viewMonth === nowYM;
+  let daysLeft = 99;
+  if(isCur){ const t=new Date(); daysLeft = new Date(t.getFullYear(), t.getMonth()+1, 0).getDate() - t.getDate(); }
+  const remind = isPast || (isCur && daysLeft<=5);
+  const acked = !!((sp.settings.leftoverAck||{})[viewMonth]);
+  const goalNote = goal>0 ? ` and your ${fmt(goal)} savings goal` : '';
+
+  // money unallocated right now (actuals only)
+  const leftoverActual = Math.round((savings - goal)*100)/100;
+
+  // forward projection for the current month, before the final-days reminder:
+  //   net saved so far  + paycheques still to come  − budget still to spend  − savings goal
+  let remainingBudget = 0, expectedIncome = 0;
+  if(isCur && !remind){
+    (sp.categories||[]).filter(c=>c.type==='expense').forEach(c=>{
+      const t=effectiveTarget(sp,c,viewMonth);
+      if(t>0) remainingBudget += Math.max(0, t - spentByCat(mtx,c.id));
+    });
+    expectedIncome = upcomingIncomeThisMonth(sp);
+  }
+  const projLeftover = Math.round((savings + expectedIncome - remainingBudget - goal)*100)/100;
+
+  if(acked && (leftoverActual>0.5 || projLeftover>0.5)){
+    const shown = leftoverActual>0.5 ? leftoverActual : projLeftover;
+    h+=`<div class="card leftover-done"><div class="between"><span>✅ <b>${fmt(shown)}</b> set aside for savings this month</span>
+      <button class="btn text" style="padding:4px 10px" onclick="unackLeftover('${viewMonth}')">Undo</button></div></div>`;
+  } else if(remind && income>0 && leftoverActual>0.5){
+    h+=`<div class="card leftover-remind">
+      <h3>💰 Money to put away</h3>
+      <div class="big">${fmt(leftoverActual)} left over</div>
+      <div class="sub">${isPast?'This month wrapped up and you':'The month is almost over — you'} came in under budget after spending${goalNote}. Move it into savings or investments so it doesn't get spent next month.</div>
+      <button class="btn filled block mt8" onclick="ackLeftover('${viewMonth}')">✓ I moved it to savings</button>
+    </div>`;
+  } else if(isCur && !remind && projLeftover>0.5 && (income>0 || expectedIncome>0)){
+    const parts = `${fmt0(savings)} saved so far`
+      + (expectedIncome>0 ? ` + ${fmt0(expectedIncome)} still to come` : '')
+      + (remainingBudget>0 ? ` − ${fmt0(remainingBudget)} left to spend` : '')
+      + (goal>0 ? ` − ${fmt0(goal)} goal` : '');
+    h+=`<div class="card leftover-track"><div class="between"><span>💡 On pace for <b>${fmt(projLeftover)}</b> left over</span><span class="pill ok">${daysLeft}d left</span></div>
+      <div class="sub" style="margin-top:4px">Projected for month-end — ${parts}. Great to move into savings or investments.</div></div>`;
+  }
   }
 
   // 50/30/20
@@ -1202,9 +1253,64 @@ function openReflected(srcId){ activeSpace='shared'; render(); if(srcId) openEdi
 /* =====================================================================
    VIEW: PLAN
    ===================================================================== */
+// distinct, theme-safe slice colors (mid-tones legible on light + dark)
+const PIE_COLORS=['#3a6b4f','#e08a3c','#5a7fb0','#9b6bb0','#d1657a','#4fa08f','#b0894f','#7a9a3f','#c86b9e','#5b8c6e','#6b7bd1','#cf8a5a'];
+// Donut of how total income splits across category budgets + savings goal (+ unallocated).
+// Percentages are of total monthly income (paycheque-based when set), i.e. current + upcoming pay.
+function planPieChart(sp, income){
+  const goal=+sp.settings.savingsGoal||0;
+  const segs=[];
+  (sp.categories||[]).filter(c=>c.type==='expense').forEach(c=>{
+    const t=effectiveTarget(sp,c,viewMonth);
+    if(t>0.005) segs.push({name:c.name, icon:c.icon||'•', val:t});
+  });
+  if(goal>0.005) segs.push({name:'Savings goal', icon:'🎯', val:goal});
+  if(!segs.length) return `<div class="sub">Set category budgets or a savings goal to see how your income splits.</div>`;
+  segs.forEach((s,i)=>{ s.color = PIE_COLORS[i%PIE_COLORS.length]; });
+
+  const alloc=segs.reduce((a,s)=>a+s.val,0);
+  const free = income>alloc+0.005 ? income-alloc : 0;
+  if(free>0) segs.push({name:'Unallocated', icon:'🫙', val:free, color:'var(--outline-variant)', free:true});
+  const whole=Math.max(income,alloc)||alloc;   // circle represents the larger of income / total budgeted
+  const overAlloc = alloc>income+0.005 && income>0;
+
+  // donut via stroke-dash arcs
+  const cx=90,cy=90,r=62,sw=30,C=2*Math.PI*r;
+  let acc=0, arcs='';
+  segs.forEach(s=>{
+    const frac=s.val/whole, len=frac*C;
+    arcs+=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${s.color}" stroke-width="${sw}" stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-acc*C).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"/>`;
+    acc+=frac;
+  });
+  const centerTop = income>0 ? fmt0(income) : fmt0(alloc);
+  const centerBot = income>0 ? 'income/mo' : 'budgeted';
+  const donut=`<svg class="pie-svg" viewBox="0 0 180 180" role="img" aria-label="How your income splits across budgets">
+    ${arcs}
+    <text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="20" font-weight="800" fill="var(--on-surface)">${centerTop}</text>
+    <text x="${cx}" y="${cy+15}" text-anchor="middle" font-size="10" fill="var(--on-surface-variant)">${centerBot}</text>
+  </svg>`;
+
+  const denom = income>0 ? income : alloc;
+  const legend=segs.map(s=>{
+    const pc = denom>0 ? Math.round(s.val/denom*100) : 0;
+    return `<div class="row"><span class="sw" style="background:${s.color}"></span>
+      <span class="nm">${s.icon} ${s.name}</span>
+      <span class="pc">${pc}%</span><span class="am">${fmt0(s.val)}</span></div>`;
+  }).join('');
+
+  const note = overAlloc
+    ? `<div class="sub" style="margin-top:4px;color:var(--error)">⚠️ Your budgets + savings goal total ${fmt0(alloc)} — that's ${Math.round(alloc/income*100)}% of your ${fmt0(income)} income. Trim somewhere to stay within 100%.</div>`
+    : income<=0 ? `<div class="sub" style="margin-top:4px">Add your income above to see each slice as a % of income.</div>` : '';
+
+  return `<div class="pie-wrap">${donut}<div class="pie-legend">${legend}</div></div>${note}`;
+}
 function viewPlan(){
   const sp=curSpace();
   const mo=monthlySalary(sp);
+  // total monthly income = current pay + what's still to come this month (or salary if set)
+  let incBasis=incomeBasis(sp,viewMonth);
+  if(viewMonth===ymKey(new Date()))
+    incBasis=Math.max(incBasis, sumBy(effMonthTx(sp,viewMonth),'income') + upcomingIncomeThisMonth(sp));
   const pay=+(sp.settings&&sp.settings.paycheck)||0;
   let h='';
 
@@ -1273,11 +1379,17 @@ function viewPlan(){
           ? `<input class="input" type="number" inputmode="decimal" style="max-width:110px" value="${c.targetPct||''}" placeholder="0" onchange="setCatTarget('${c.id}','pct',this.value)"><span class="muted">% of income ≈ ${fmt0(effectiveTarget(sp,c,viewMonth))}/mo</span>`
           : `<span class="muted">${CUR_SYMBOL}</span><input class="input" type="number" inputmode="decimal" style="max-width:140px" value="${c.target||''}" placeholder="0" onchange="setCatTarget('${c.id}','amt',this.value)"><span class="muted">/ month</span>`}
       </div>
+      ${incBasis>0?`<div class="pct-income"><b>${Math.round(effectiveTarget(sp,c,viewMonth)/incBasis*100)}%</b> of total income</div>`:''}
       ${rec>0?`<div class="between mt8"><span class="muted">💡 Recommended: <b>${fmt0(rec)}</b>/mo (${REC_PCT[c.name]}%)</span>
         <button class="btn text" style="padding:4px 10px" onclick="applyRec('${c.id}')">Use</button></div>`:''}
     </div>`;
   });
   h+=`<button class="btn text" onclick="openSheet('managecats')">✏️ Manage categories & groups</button></div>`;
+
+  // income split donut — visual share of total income per category + savings goal
+  h+=`<div class="card"><h3>🥧 Where your income goes</h3>
+    <div class="sub mb8">Each budget and your savings goal as a share of your total monthly income (current pay + what's still to come).</div>
+    ${planPieChart(sp, incBasis)}</div>`;
   return h;
 }
 function setPaycheck(v){ curSpace().settings.paycheck=+v||0; saveSpace(activeSpace); render(); toast('Income updated'); }
