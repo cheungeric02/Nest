@@ -1139,7 +1139,7 @@ function viewTx(){
   return h;
 }
 function paidByName(sp,t){ if(!t.paidBy) return ''; if(t.paidBy===user.uid) return 'You paid'; const m=sp.members[t.paidBy]; return (m&&m.name?m.name:'Partner')+' paid'; }
-function openReflected(srcId){ toast('This is your share of a Shared expense — edit it on the Shared side.'); activeSpace='shared'; render(); if(srcId) openEdit(srcId); }
+function openReflected(srcId){ activeSpace='shared'; render(); if(srcId) openEdit(srcId); }
 
 /* =====================================================================
    VIEW: PLAN
