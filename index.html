@@ -879,14 +879,18 @@ function viewTx(){
     if(day!==lastDay){ lastDay=day; h+=`<div class="tx-day">${new Date(t.date+'T00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'})}</div>`; }
     const c = t._shared ? {icon:t.icon,name:t.name} : (catById(sp,t.categoryId)||{icon:'❓',name:'Uncategorized'});
     const isInc=t.type==='income';
-    let sub = c.name + (t.vendor?` · ${t.vendor}`:'');
-    if(activeSpace==='shared'){ const payer=paidByName(sp,t); sub+= payer?` · ${payer}`:''; }
     const isRec = !t._shared && !!t.recurringId;
     const tag = t._shared ? `<span class="tag">🤝 Shared</span>` : (isRec?`<span class="tag">🔁</span>`:'');
+    const payer = activeSpace==='shared' ? paidByName(sp,t) : '';
+    // Primary line = vendor (falls back to category); secondary = category (+ who paid, for shared)
+    const primary = t._shared ? (t.vendor || 'Your share of a Shared expense') : (t.vendor || c.name);
+    let secondary;
+    if(t.vendor || t._shared){ secondary = c.name + (payer?` · ${payer}`:''); }
+    else { secondary = t.note || payer || ''; }
     const click = t._shared ? `openReflected('${t.srcId}')` : `openEdit('${t.id}')`;
     h+=`<div class="tx ${isInc?'inc':''}${t._shared?' reflected':''}" onclick="${click}">
       <div class="ic">${c.icon||'•'}</div>
-      <div class="mid"><div class="t1">${c.name} ${tag}</div><div class="t2">${t._shared?(t.vendor||'Your share of a Shared expense'):(t.vendor||t.note||sub)}</div></div>
+      <div class="mid"><div class="t1">${primary} ${tag}</div><div class="t2">${secondary}</div></div>
       <div class="amt ${isInc?'inc':''}">${isInc?'+':'-'}${fmt(t.amount)}</div>
     </div>`;
   });
@@ -1105,7 +1109,13 @@ function renderAddSheet(isEdit){
   const d=addDraft;
   if(d.type==='income') d.space=isEdit?d.space:activeSpace;  // income follows the space you're in
   const sp=draftSpace();
-  const cats=(sp.categories||[]).filter(c=>c.type===d.type);
+  // Category picker ordered by how often each category has been used (most-used first),
+  // ties broken by the category's original order.
+  const usage={}; (sp.transactions||[]).forEach(t=>{ if(t.categoryId) usage[t.categoryId]=(usage[t.categoryId]||0)+1; });
+  const cats=(sp.categories||[]).filter(c=>c.type===d.type)
+    .map((c,i)=>({c,i,u:usage[c.id]||0}))
+    .sort((a,b)=> b.u-a.u || a.i-b.i)
+    .map(x=>x.c);
   const shared=d.space==='shared';
   let members = shared? Object.entries((sp&&sp.members)||{}).map(([uidx,m])=>({uid:uidx,name:m.name||'?'})):[];
   let html=`<div class="grabber"></div>
@@ -1149,7 +1159,7 @@ function renderAddSheet(isEdit){
 
   html+=`<div class="row2">
       <div class="field"><label>${isEdit?'Date':(d.repeat==='none'?'Date':'Starts on')}</label><input class="input" type="date" value="${d.date}" onchange="addDraft.date=this.value"></div>
-      <div class="field"><label>${d.type==='income'?'Source':'Store / Vendor'}</label><input class="input" value="${d.vendor}" oninput="addDraft.vendor=this.value" placeholder="Optional"></div>
+      <div class="field"><label>${d.type==='income'?'Source':'Store / Vendor *'}</label><input class="input" value="${d.vendor}" oninput="addDraft.vendor=this.value" placeholder="${d.type==='income'?'Optional':'Required'}"></div>
     </div>`;
   if(!isEdit){
     html+=`<div class="field"><label>🔁 Repeat</label><div class="chips">
@@ -1194,6 +1204,7 @@ function saveTx(){
   const d=addDraft; const amt=parseFloat(d.amount);
   if(!amt||amt<=0){ toast('Enter an amount'); return; }
   if(!d.categoryId){ toast('Pick a category'); return; }
+  if(d.type==='expense' && !(d.vendor||'').trim()){ toast('Add a store / vendor'); return; }
   if(d._saving) return;                 // guard: ignore a second Save tap on the same entry
   d._saving=true;
   const sp=draftSpace(); const amtR=Math.round(amt*100)/100;
@@ -1302,7 +1313,8 @@ function sheetManageCats(){
               ${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${c.group===k?'selected':''}>${v}</option>`).join('')}
             </select></div>`:''}
         </div>
-        <button class="icon-btn" onclick="deleteCat('${c.id}')">🗑️</button>
+        <button class="icon-btn" onclick="openEditCat('${c.id}')" title="Edit">✏️</button>
+        <button class="icon-btn" onclick="deleteCat('${c.id}')" title="Delete">🗑️</button>
       </div>`;
     });
   });
@@ -1321,6 +1333,22 @@ function addCat(){
   const c={id:uid(),name,icon:document.getElementById('ncIcon').value.trim()||'•',type:document.getElementById('ncType').value,group:document.getElementById('ncGroup').value,target:0,useIncomePct:false,targetPct:0};
   curSpace().categories=asArray(curSpace().categories); curSpace().categories.push(c);
   saveSpace(activeSpace); openSheet('managecats'); render(); toast('Category added');
+}
+function openEditCat(id){ const c=catById(curSpace(),id); if(!c) return; openSheetHTML(sheetEditCat(id)); }
+function sheetEditCat(id){
+  const c=catById(curSpace(),id); if(!c) return '';
+  return `<div class="grabber"></div><h2>Edit category</h2>
+    <div class="field"><label>Name</label><input id="ecName" class="input" value="${(c.name||'').replace(/"/g,'&quot;')}" placeholder="e.g. Pet care"></div>
+    <div class="field"><label>Emoji</label><input id="ecIcon" class="input" value="${(c.icon||'').replace(/"/g,'&quot;')}" placeholder="🐾" maxlength="2"></div>
+    ${c.type==='expense'?`<div class="field"><label>Group</label><select id="ecGroup" class="input">${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${c.group===k?'selected':''}>${v}</option>`).join('')}</select></div>`:''}
+    <button class="btn filled block" onclick="saveCatEdit('${id}')">Save changes</button>`;
+}
+function saveCatEdit(id){
+  const c=catById(curSpace(),id); if(!c) return;
+  const name=document.getElementById('ecName').value.trim(); if(!name){ toast('Name required'); return; }
+  c.name=name; c.icon=document.getElementById('ecIcon').value.trim()||'•';
+  const g=document.getElementById('ecGroup'); if(g) c.group=g.value;
+  saveSpace(activeSpace); openSheet('managecats'); render(); toast('Category updated');
 }
 function setCatGroup(id,g){ const c=catById(curSpace(),id); if(c){c.group=g; saveSpace(activeSpace);} }
 function deleteCat(id){ const sp=curSpace(); const used=(sp.transactions||[]).some(t=>t.categoryId===id); if(used){ if(!confirm('This category has transactions. Delete anyway? (transactions stay but show uncategorized)'))return;} sp.categories=asArray(sp.categories).filter(c=>c.id!==id); saveSpace(activeSpace); openSheet('managecats'); render(); }
