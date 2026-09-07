@@ -1,0 +1,1091 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#3a6b4f">
+<title>Nest</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+/* ============================================================
+   NEST — Material 3 Expressive design tokens
+   ============================================================ */
+:root{
+  --primary:#3a6b4f; --on-primary:#ffffff;
+  --primary-container:#bcefc9; --on-primary-container:#00210f;
+  --secondary:#8a5a2b; --secondary-container:#ffdcb8; --on-secondary-container:#2c1600;
+  --tertiary:#3c6472; --tertiary-container:#c0e9fa; --on-tertiary-container:#001f28;
+  --error:#ba1a1a; --error-container:#ffdad6; --on-error-container:#410002;
+  --surface:#f7fbf3; --on-surface:#181d18;
+  --surface-dim:#d7dbd2; --surface-bright:#f7fbf3;
+  --surface-container-lowest:#ffffff; --surface-container-low:#f1f5ec;
+  --surface-container:#ebefe6; --surface-container-high:#e5eae1; --surface-container-highest:#e0e4db;
+  --on-surface-variant:#414941; --outline:#717970; --outline-variant:#c1c9bd;
+  --success:#2e7d32; --warn:#c77800;
+  --shadow:0 1px 3px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.08);
+  --shadow-lg:0 4px 12px rgba(0,0,0,.15);
+  --r-xs:8px; --r-sm:12px; --r-md:16px; --r-lg:24px; --r-xl:28px; --r-full:999px;
+  --nav-h:80px;
+}
+:root[data-theme="dark"]{
+  --primary:#a1d3ac; --on-primary:#093920; --primary-container:#235135; --on-primary-container:#bcefc9;
+  --secondary:#f5bd7e; --secondary-container:#6a4014; --on-secondary-container:#ffdcb8;
+  --tertiary:#a4cddd; --tertiary-container:#234c59; --on-tertiary-container:#c0e9fa;
+  --error:#ffb4ab; --error-container:#93000a; --on-error-container:#ffdad6;
+  --surface:#0f140f; --on-surface:#dfe4db;
+  --surface-dim:#0f140f; --surface-bright:#353a34;
+  --surface-container-lowest:#0a0f0a; --surface-container-low:#181d18;
+  --surface-container:#1c211b; --surface-container-high:#262b25; --surface-container-highest:#313630;
+  --on-surface-variant:#c1c9bd; --outline:#8b938a; --outline-variant:#414941;
+  --success:#7fdd84; --warn:#f5bd7e;
+  --shadow:0 1px 3px rgba(0,0,0,.4); --shadow-lg:0 4px 16px rgba(0,0,0,.5);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --primary:#a1d3ac; --on-primary:#093920; --primary-container:#235135; --on-primary-container:#bcefc9;
+    --secondary:#f5bd7e; --secondary-container:#6a4014; --on-secondary-container:#ffdcb8;
+    --tertiary:#a4cddd; --tertiary-container:#234c59; --on-tertiary-container:#c0e9fa;
+    --error:#ffb4ab; --error-container:#93000a; --on-error-container:#ffdad6;
+    --surface:#0f140f; --on-surface:#dfe4db;
+    --surface-dim:#0f140f; --surface-bright:#353a34;
+    --surface-container-lowest:#0a0f0a; --surface-container-low:#181d18;
+    --surface-container:#1c211b; --surface-container-high:#262b25; --surface-container-highest:#313630;
+    --on-surface-variant:#c1c9bd; --outline:#8b938a; --outline-variant:#414941;
+    --success:#7fdd84; --warn:#f5bd7e;
+    --shadow:0 1px 3px rgba(0,0,0,.4); --shadow-lg:0 4px 16px rgba(0,0,0,.5);
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:'Segoe UI',Roboto,system-ui,-apple-system,sans-serif;
+  background:var(--surface); color:var(--on-surface);
+  overscroll-behavior-y:none; -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit;font-size:16px}
+h1,h2,h3,h4{margin:0;font-weight:600}
+.hidden{display:none!important}
+
+/* ---------- App shell ---------- */
+#app{max-width:1100px;margin:0 auto;min-height:100vh;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom))}
+.topbar{
+  position:sticky;top:0;z-index:20;background:var(--surface);
+  padding:calc(env(safe-area-inset-top) + 12px) 16px 8px;
+  display:flex;align-items:center;gap:12px;
+}
+.topbar .title{font-size:1.6rem;font-weight:700;letter-spacing:-.5px;display:flex;align-items:center;gap:8px}
+.topbar .title .logo{font-size:1.5rem}
+.topbar .spacer{flex:1}
+.icon-btn{width:44px;height:44px;border-radius:var(--r-full);display:grid;place-items:center;font-size:1.3rem;color:var(--on-surface-variant)}
+.icon-btn:active{background:var(--surface-container-high)}
+
+/* ---------- Segmented space toggle ---------- */
+.segmented{display:flex;background:var(--surface-container);border-radius:var(--r-full);padding:4px;margin:4px 16px 12px;gap:4px}
+.segmented button{flex:1;padding:10px;border-radius:var(--r-full);font-weight:600;font-size:.95rem;color:var(--on-surface-variant);display:flex;align-items:center;justify-content:center;gap:6px;transition:.15s}
+.segmented button.active{background:var(--primary);color:var(--on-primary);box-shadow:var(--shadow)}
+
+/* ---------- Content ---------- */
+.content{padding:0 16px}
+.view{animation:fade .25s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ---------- Cards ---------- */
+.card{background:var(--surface-container-low);border-radius:var(--r-lg);padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+.card h3{font-size:1rem;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card .sub{color:var(--on-surface-variant);font-size:.85rem}
+
+/* month selector */
+.month-nav{display:flex;align-items:center;justify-content:center;gap:8px;margin:0 16px 14px}
+.month-nav button{width:40px;height:40px;border-radius:var(--r-full);background:var(--surface-container);font-size:1.2rem;display:grid;place-items:center}
+.month-nav .label{font-weight:600;min-width:150px;text-align:center;font-size:1.05rem}
+
+/* summary grid */
+.sum-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+.sum-tile{background:var(--surface-container-low);border-radius:var(--r-md);padding:14px 12px;text-align:center;box-shadow:var(--shadow)}
+.sum-tile .lbl{font-size:.72rem;color:var(--on-surface-variant);text-transform:uppercase;letter-spacing:.4px}
+.sum-tile .val{font-size:1.15rem;font-weight:700;margin-top:4px}
+.sum-tile.income .val{color:var(--success)}
+.sum-tile.expense .val{color:var(--secondary)}
+.sum-tile.save .val.pos{color:var(--primary)} .sum-tile.save .val.neg{color:var(--error)}
+
+/* progress bars */
+.bar-row{margin-bottom:14px}
+.bar-row .top{display:flex;justify-content:space-between;font-size:.9rem;margin-bottom:5px}
+.bar-row .top .amt{color:var(--on-surface-variant)}
+.bar-row .top .amt b{color:var(--on-surface)}
+.track{height:10px;background:var(--surface-container-high);border-radius:var(--r-full);overflow:hidden}
+.fill{height:100%;background:var(--primary);border-radius:var(--r-full);transition:width .4s}
+.fill.over{background:var(--error)}
+.fill.warn{background:var(--warn)}
+.pill{font-size:.7rem;padding:2px 8px;border-radius:var(--r-full);font-weight:600}
+.pill.over{background:var(--error-container);color:var(--on-error-container)}
+.pill.ok{background:var(--primary-container);color:var(--on-primary-container)}
+
+/* 50/30/20 */
+.tri{display:flex;height:22px;border-radius:var(--r-full);overflow:hidden;margin:6px 0 10px}
+.tri span{display:block;height:100%}
+.tri .need{background:var(--primary)} .tri .want{background:var(--secondary)} .tri .sav{background:var(--tertiary)}
+.tri-legend{display:flex;gap:14px;font-size:.8rem;flex-wrap:wrap}
+.tri-legend .k{display:flex;align-items:center;gap:5px}
+.dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+
+/* settle card */
+.settle{background:var(--tertiary-container);color:var(--on-tertiary-container)}
+.settle .big{font-size:1.5rem;font-weight:800;margin:4px 0}
+
+/* transactions */
+.tx-day{font-size:.8rem;color:var(--on-surface-variant);font-weight:600;margin:14px 4px 6px}
+.tx{display:flex;align-items:center;gap:12px;background:var(--surface-container-low);border-radius:var(--r-md);padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow)}
+.tx .ic{width:42px;height:42px;border-radius:var(--r-full);background:var(--primary-container);color:var(--on-primary-container);display:grid;place-items:center;font-size:1.1rem;flex-shrink:0}
+.tx.inc .ic{background:var(--tertiary-container);color:var(--on-tertiary-container)}
+.tx .mid{flex:1;min-width:0}
+.tx .mid .t1{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx .mid .t2{font-size:.8rem;color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx .amt{font-weight:700;white-space:nowrap}
+.tx .amt.inc{color:var(--success)}
+
+/* chips */
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{padding:9px 14px;border-radius:var(--r-full);background:var(--surface-container-high);font-size:.9rem;font-weight:500;border:1.5px solid transparent}
+.chip.active{background:var(--primary-container);color:var(--on-primary-container);border-color:var(--primary)}
+.chip.small{padding:6px 12px;font-size:.82rem}
+
+/* forms */
+.field{margin-bottom:14px}
+.field label{display:block;font-size:.82rem;color:var(--on-surface-variant);margin-bottom:6px;font-weight:500}
+.input,select.input{width:100%;padding:13px 14px;border-radius:var(--r-sm);border:1.5px solid var(--outline-variant);background:var(--surface-container-lowest);color:var(--on-surface)}
+.input:focus{outline:none;border-color:var(--primary)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 22px;border-radius:var(--r-full);font-weight:600;font-size:.95rem;transition:.15s}
+.btn.filled{background:var(--primary);color:var(--on-primary)}
+.btn.filled:active{filter:brightness(.92)}
+.btn.tonal{background:var(--secondary-container);color:var(--on-secondary-container)}
+.btn.outline{border:1.5px solid var(--outline);color:var(--primary)}
+.btn.text{color:var(--primary);padding:12px 16px}
+.btn.danger{background:var(--error-container);color:var(--on-error-container)}
+.btn.block{width:100%}
+.btn:disabled{opacity:.4;pointer-events:none}
+
+/* FAB / bottom nav */
+.navbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;height:calc(var(--nav-h) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
+  background:var(--surface-container);display:flex;align-items:center;justify-content:space-around;
+  box-shadow:0 -1px 8px rgba(0,0,0,.08);max-width:1100px;margin:0 auto;
+}
+.nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;color:var(--on-surface-variant);font-size:.7rem;font-weight:500;padding:8px;min-width:56px}
+.nav-item .ni{font-size:1.35rem;line-height:1;padding:4px 16px;border-radius:var(--r-full);transition:.15s}
+.nav-item.active{color:var(--primary)}
+.nav-item.active .ni{background:var(--primary-container);color:var(--on-primary-container)}
+.fab{
+  width:60px;height:60px;border-radius:var(--r-lg);background:var(--primary);color:var(--on-primary);
+  display:grid;place-items:center;font-size:1.8rem;box-shadow:var(--shadow-lg);margin-top:-18px
+}
+.fab:active{filter:brightness(.92)}
+
+/* sheet / modal */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;opacity:0;pointer-events:none;transition:.2s}
+.scrim.show{opacity:1;pointer-events:auto}
+.sheet{
+  position:fixed;left:0;right:0;bottom:0;z-index:50;background:var(--surface-container-low);
+  border-radius:var(--r-xl) var(--r-xl) 0 0;padding:8px 20px calc(24px + env(safe-area-inset-bottom));
+  max-width:600px;margin:0 auto;transform:translateY(110%);transition:transform .28s cubic-bezier(.2,.8,.2,1);
+  max-height:92vh;overflow-y:auto
+}
+.sheet.show{transform:translateY(0)}
+.grabber{width:36px;height:4px;background:var(--outline-variant);border-radius:2px;margin:6px auto 14px}
+.sheet h2{font-size:1.2rem;margin-bottom:16px}
+
+/* amount display for add */
+.amount-display{text-align:center;padding:14px 0 6px}
+.amount-display .cur{font-size:1.4rem;color:var(--on-surface-variant);vertical-align:top}
+.amount-display .num{font-size:3rem;font-weight:800;letter-spacing:-1px}
+.type-toggle{display:flex;gap:8px;justify-content:center;margin:10px 0 18px}
+.type-toggle button{padding:8px 20px;border-radius:var(--r-full);background:var(--surface-container-high);font-weight:600;font-size:.9rem}
+.type-toggle button.active.exp{background:var(--secondary-container);color:var(--on-secondary-container)}
+.type-toggle button.active.inc{background:var(--tertiary-container);color:var(--on-tertiary-container)}
+
+/* keypad */
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+.key{padding:16px;border-radius:var(--r-md);background:var(--surface-container-high);font-size:1.4rem;font-weight:600;text-align:center}
+.key:active{background:var(--primary-container)}
+
+/* insights bars */
+.mbars{display:flex;align-items:flex-end;gap:8px;height:150px;padding-top:10px}
+.mbar{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.mbar .stack{width:100%;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:2px}
+.mbar .seg{width:100%;border-radius:4px 4px 0 0}
+.mbar .seg.inc{background:var(--tertiary)} .mbar .seg.exp{background:var(--secondary)}
+.mbar .ml{font-size:.65rem;color:var(--on-surface-variant)}
+
+/* empty state */
+.empty{text-align:center;padding:50px 20px;color:var(--on-surface-variant)}
+.empty .em{font-size:3rem;margin-bottom:10px}
+
+/* auth / signin */
+.signin-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;gap:8px}
+.signin-wrap .logo-big{font-size:4rem}
+.signin-wrap h1{font-size:2.2rem;letter-spacing:-1px}
+.signin-wrap p{color:var(--on-surface-variant);max-width:320px;margin:0 0 20px}
+.gbtn{display:flex;align-items:center;gap:12px;background:var(--surface-container-lowest);border:1.5px solid var(--outline-variant);padding:13px 22px;border-radius:var(--r-full);font-weight:600;box-shadow:var(--shadow)}
+
+/* toast */
+.toast{position:fixed;bottom:calc(var(--nav-h) + 20px);left:50%;transform:translateX(-50%) translateY(20px);background:var(--on-surface);color:var(--surface);padding:12px 20px;border-radius:var(--r-full);font-size:.9rem;font-weight:500;z-index:100;opacity:0;transition:.25s;box-shadow:var(--shadow-lg);white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* small helpers */
+.muted{color:var(--on-surface-variant)}
+.right{text-align:right}
+.flex{display:flex;align-items:center;gap:10px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.mt8{margin-top:8px}.mt16{margin-top:16px}.mb8{margin-bottom:8px}
+.testbar{background:var(--secondary-container);color:var(--on-secondary-container);font-size:.78rem;padding:6px 16px;text-align:center;font-weight:600}
+.member-badge{font-size:.7rem;padding:2px 8px;border-radius:var(--r-full);background:var(--surface-container-high);color:var(--on-surface-variant)}
+
+/* responsive: unfolded / tablet */
+@media(min-width:700px){
+  .sum-grid{gap:14px}
+  .two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  .two-col .card{margin-bottom:0}
+}
+</style>
+</head>
+<body>
+
+<!-- SIGN IN -->
+<div id="signin" class="signin-wrap hidden">
+  <div class="logo-big">🪺</div>
+  <h1>Nest</h1>
+  <p>Your shared home for budgeting. Track spending, plan together, split expenses.</p>
+  <button class="gbtn" onclick="doSignIn()">
+    <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.7 1.22 9.2 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+    Sign in with Google
+  </button>
+  <p class="muted" id="testSigninNote" style="font-size:.8rem"></p>
+</div>
+
+<!-- MAIN APP -->
+<div id="app" class="hidden">
+  <div id="testbar" class="testbar hidden"></div>
+  <div class="topbar">
+    <div class="title"><span class="logo">🪺</span> Nest</div>
+    <div class="spacer"></div>
+    <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Theme">🌙</button>
+    <button class="icon-btn" onclick="openSheet('settings')" title="Settings">⚙️</button>
+  </div>
+
+  <div class="segmented" id="spaceToggle">
+    <button data-space="personal" onclick="setSpace('personal')">🧍 Personal</button>
+    <button data-space="shared" onclick="setSpace('shared')">🤝 Shared</button>
+  </div>
+
+  <div class="content" id="content"></div>
+</div>
+
+<!-- bottom nav -->
+<div class="navbar hidden" id="navbar">
+  <button class="nav-item" data-tab="home" onclick="setTab('home')"><span class="ni">🏠</span>Home</button>
+  <button class="nav-item" data-tab="tx" onclick="setTab('tx')"><span class="ni">📋</span>Activity</button>
+  <button class="fab" onclick="openAdd()">＋</button>
+  <button class="nav-item" data-tab="plan" onclick="setTab('plan')"><span class="ni">🎯</span>Plan</button>
+  <button class="nav-item" data-tab="insights" onclick="setTab('insights')"><span class="ni">📊</span>Insights</button>
+</div>
+
+<div class="scrim" id="scrim" onclick="closeSheet()"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+
+<!-- Firebase compat SDKs (only loaded/used when TEST_MODE is false) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<script>
+/* =====================================================================
+   NEST  — budgeting app for two.  Single-file.
+   TEST_MODE = true  -> no Firebase, localStorage only, fake users.
+   Flip to false and fill firebaseConfig once Eric provides it.
+   ===================================================================== */
+const TEST_MODE = true;
+
+const firebaseConfig = {
+  // PASTE FROM FIREBASE CONSOLE HERE (used only when TEST_MODE === false)
+  apiKey:"", authDomain:"", databaseURL:"", projectId:"", storageBucket:"", messagingSenderId:"", appId:""
+};
+
+/* ---------- safe storage (localStorage throws inside data: URLs / private mode) ---------- */
+const _mem = {};
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return (k in _mem)?_mem[k]:null; } }
+function lsSet(k,v){ try{ localStorage.setItem(k,v); }catch(e){ _mem[k]=v; } }
+function lsDel(k){ try{ localStorage.removeItem(k); }catch(e){ delete _mem[k]; } }
+
+/* ---------- constants ---------- */
+const CUR_SYMBOL = "$";
+const CUR_CODE = "CAD";
+const GROUPS = {need:"Needs", want:"Wants", savings:"Savings"};
+
+const DEFAULT_EXPENSE_CATS = [
+  {name:"Groceries", icon:"🛒", group:"need"},
+  {name:"Rent / Housing", icon:"🏠", group:"need"},
+  {name:"Utilities", icon:"💡", group:"need"},
+  {name:"Wifi", icon:"📶", group:"need"},
+  {name:"Cell Phone", icon:"📱", group:"need"},
+  {name:"Insurance", icon:"🛡️", group:"need"},
+  {name:"Gas", icon:"⛽", group:"need"},
+  {name:"Public Transit", icon:"🚇", group:"need"},
+  {name:"Health / Medical", icon:"💊", group:"need"},
+  {name:"Home", icon:"🔧", group:"need"},
+  {name:"Restaurant", icon:"🍽️", group:"want"},
+  {name:"Coffee", icon:"☕", group:"want"},
+  {name:"Date Activities", icon:"💞", group:"want"},
+  {name:"Going Out", icon:"🍸", group:"want"},
+  {name:"Entertainment", icon:"🎬", group:"want"},
+  {name:"Streaming", icon:"📺", group:"want"},
+  {name:"Shopping", icon:"🛍️", group:"want"},
+  {name:"Clothing", icon:"👕", group:"want"},
+  {name:"Gym", icon:"💪", group:"want"},
+  {name:"Gifts", icon:"🎁", group:"want"},
+  {name:"Travel", icon:"✈️", group:"want"},
+  {name:"Other", icon:"📦", group:"want"},
+];
+const DEFAULT_INCOME_CATS = [
+  {name:"Job", icon:"💼"},
+  {name:"Bonus", icon:"🌟"},
+  {name:"Other Income", icon:"💰"},
+];
+
+/* ---------- runtime state ---------- */
+let db=null, auth=null;
+let user=null;                      // {uid,name,email,photo}
+let activeSpace = "personal";
+let activeTab = "home";
+let viewMonth = ymKey(new Date());  // "YYYY-MM"
+let data = { personal:blankSpace(), shared:null };  // shared null until joined
+let addDraft = null;
+let unsub = [];
+
+function blankSpace(){
+  return { categories:[], transactions:[], settings:{savingsGoal:0}, members:{}, settlements:[], inviteCode:null };
+}
+
+/* =====================================================================
+   BOOT
+   ===================================================================== */
+window.addEventListener('DOMContentLoaded', ()=>{
+  initTheme();
+  if(TEST_MODE){ bootTestMode(); }
+  else { bootFirebase(); }
+  if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+});
+
+/* ---------------- TEST MODE ---------------- */
+let TEST_USER = lsGet('nest_test_user') || 'u1';
+const TEST_PEOPLE = {u1:{uid:'u1',name:'You',email:'you@test',photo:''}, u2:{uid:'u2',name:'Alex',email:'alex@test',photo:''}};
+
+function bootTestMode(){
+  document.getElementById('testbar').classList.remove('hidden');
+  user = TEST_PEOPLE[TEST_USER];
+  loadTestData();
+  showApp();
+}
+function loadTestData(){
+  // personal is per-user; shared is global
+  const p = JSON.parse(lsGet('nest_personal_'+user.uid) || 'null');
+  data.personal = p ? normalizeSpace(p) : seedPersonal();
+  const s = JSON.parse(lsGet('nest_shared') || 'null');
+  data.shared = s ? normalizeSpace(s) : null;
+  if(!p) saveSpace('personal');
+}
+function seedPersonal(){
+  const sp = blankSpace();
+  sp.categories = buildDefaultCats();
+  sp.settings.savingsGoal = 500;
+  // a couple of sample transactions in current month so screens aren't empty
+  const today = new Date();
+  const d = n=> new Date(today.getFullYear(),today.getMonth(),n).toISOString().slice(0,10);
+  const cid = nm => (sp.categories.find(c=>c.name===nm)||{}).id;
+  sp.transactions = [
+    {id:uid(),date:d(2),amount:1767,categoryId:cid("Rent / Housing"),vendor:"Landlord",note:"",type:"expense"},
+    {id:uid(),date:d(4),amount:82.4,categoryId:cid("Groceries"),vendor:"Loblaws",note:"",type:"expense"},
+    {id:uid(),date:d(5),amount:6.15,categoryId:cid("Coffee"),vendor:"Starbucks",note:"",type:"expense"},
+    {id:uid(),date:d(6),amount:2777.23,categoryId:cid("Job"),vendor:"O&B",note:"paycheque",type:"income"},
+    {id:uid(),date:d(7),amount:54.2,categoryId:cid("Restaurant"),vendor:"Kinka",note:"",type:"expense"},
+  ];
+  return sp;
+}
+function switchTestUser(u){
+  TEST_USER=u; lsSet('nest_test_user',u);
+  user=TEST_PEOPLE[u]; loadTestData(); closeSheet(); updTestbar(); render(); toast('Now viewing as '+user.name);
+}
+
+/* ---------------- FIREBASE MODE ---------------- */
+function bootFirebase(){
+  firebase.initializeApp(firebaseConfig);
+  auth = firebase.auth(); db = firebase.database();
+  document.getElementById('signin').classList.remove('hidden');
+  auth.onAuthStateChanged(async u=>{
+    if(u){
+      user={uid:u.uid,name:u.displayName||'Me',email:u.email,photo:u.photoURL||''};
+      await db.ref('users/'+u.uid).update({name:user.name,email:user.email,photo:user.photo});
+      attachPersonal();
+      attachSharedIfMember();
+      showApp();
+    } else {
+      user=null; document.getElementById('signin').classList.remove('hidden');
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('navbar').classList.add('hidden');
+    }
+  });
+}
+function doSignIn(){
+  if(TEST_MODE){ toast('Test mode — already signed in'); return; }
+  const provider=new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch(e=>{ auth.signInWithRedirect(provider); });
+}
+function attachPersonal(){
+  db.ref('personal/'+user.uid).on('value',snap=>{
+    const v=snap.val();
+    data.personal = v?normalizeSpace(v):seedFirstTime('personal');
+    if(!v){ db.ref('personal/'+user.uid).set(stripForSave(data.personal)); }
+    if(!TEST_MODE) render();
+  });
+}
+async function attachSharedIfMember(){
+  const snap = await db.ref('users/'+user.uid+'/sharedSpace').get();
+  const sid = snap.val();
+  if(sid){
+    db.ref('shared/'+sid).on('value',s=>{
+      const v=s.val(); data.shared = v?normalizeSpace(v):null;
+      data.shared && (data.shared.id=sid);
+      render();
+    });
+  }
+}
+function seedFirstTime(which){
+  const sp=blankSpace(); sp.categories=buildDefaultCats(); sp.settings.savingsGoal=0; return sp;
+}
+
+/* =====================================================================
+   PERSISTENCE
+   ===================================================================== */
+function saveSpace(which){
+  const sp = which==='personal'?data.personal:data.shared;
+  if(!sp) return;
+  if(TEST_MODE){
+    if(which==='personal') lsSet('nest_personal_'+user.uid, JSON.stringify(sp));
+    else lsSet('nest_shared', JSON.stringify(sp));
+  } else {
+    const path = which==='personal' ? 'personal/'+user.uid : 'shared/'+sp.id;
+    db.ref(path).set(stripForSave(sp));
+  }
+}
+function stripForSave(sp){ const c={...sp}; delete c.id; return c; }
+
+/* normalize: guard against Firebase dropping empty arrays/objects */
+function normalizeSpace(sp){
+  sp=sp||{};
+  return {
+    categories: asArray(sp.categories),
+    transactions: asArray(sp.transactions),
+    settlements: asArray(sp.settlements),
+    settings: sp.settings || {savingsGoal:0},
+    members: sp.members || {},
+    inviteCode: sp.inviteCode || null,
+    id: sp.id || null,
+  };
+}
+function asArray(x){ if(!x) return []; if(Array.isArray(x)) return x.filter(Boolean); return Object.values(x).filter(Boolean); }
+function buildDefaultCats(){
+  const out=[];
+  DEFAULT_EXPENSE_CATS.forEach(c=>out.push({id:uid(),name:c.name,icon:c.icon,type:"expense",group:c.group,target:0,useIncomePct:false,targetPct:0}));
+  DEFAULT_INCOME_CATS.forEach(c=>out.push({id:uid(),name:c.name,icon:c.icon,type:"income",group:"savings",target:0,useIncomePct:false,targetPct:0}));
+  return out;
+}
+
+/* =====================================================================
+   HELPERS
+   ===================================================================== */
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function ymKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function parseYM(k){ const [y,m]=k.split('-').map(Number); return new Date(y,m-1,1); }
+function monthLabel(k){ return parseYM(k).toLocaleDateString('en-CA',{month:'long',year:'numeric'}); }
+function fmt(n){ n=n||0; return CUR_SYMBOL+Math.abs(n).toLocaleString('en-CA',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmt0(n){ n=n||0; return CUR_SYMBOL+Math.round(Math.abs(n)).toLocaleString('en-CA'); }
+function curSpace(){ return activeSpace==='personal'?data.personal:data.shared; }
+function catById(sp,id){ return (sp.categories||[]).find(c=>c.id===id); }
+function txMonth(t){ return t.date? t.date.slice(0,7):''; }
+
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),2200); }
+
+/* THEME */
+function initTheme(){ const s=lsGet('nest_theme'); if(s) document.documentElement.setAttribute('data-theme',s); updThemeBtn(); }
+function toggleTheme(){ const cur=document.documentElement.getAttribute('data-theme'); const mql=window.matchMedia('(prefers-color-scheme:dark)').matches; let next; if(!cur) next=mql?'light':'dark'; else next=cur==='dark'?'light':'dark'; document.documentElement.setAttribute('data-theme',next); lsSet('nest_theme',next); updThemeBtn(); }
+function updThemeBtn(){ const cur=document.documentElement.getAttribute('data-theme'); const dark = cur? cur==='dark' : window.matchMedia('(prefers-color-scheme:dark)').matches; const b=document.getElementById('themeBtn'); if(b) b.textContent=dark?'☀️':'🌙'; }
+
+/* =====================================================================
+   SHOW APP / RENDER DISPATCH
+   ===================================================================== */
+function showApp(){
+  document.getElementById('signin').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('navbar').classList.remove('hidden');
+  updTestbar();
+  render();
+}
+function updTestbar(){
+  if(!TEST_MODE) return;
+  document.getElementById('testbar').innerHTML =
+    `🧪 TEST MODE · viewing as <b>${user.name}</b> · <a href="#" onclick="openSheet('testswitch');return false" style="text-decoration:underline">switch user</a>`;
+}
+function setSpace(s){
+  if(s==='shared' && !data.shared){ activeSpace='shared'; render(); return; } // will show join screen
+  activeSpace=s; render();
+}
+function setTab(t){ activeTab=t; render(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+function render(){
+  // toggle chrome
+  document.querySelectorAll('#spaceToggle button').forEach(b=>b.classList.toggle('active',b.dataset.space===activeSpace));
+  document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===activeTab));
+  updThemeBtn();
+
+  const c=document.getElementById('content');
+
+  // Shared space not set up yet
+  if(activeSpace==='shared' && !data.shared){ c.innerHTML=viewSharedSetup(); return; }
+
+  let html='';
+  if(activeTab==='home') html=viewHome();
+  else if(activeTab==='tx') html=viewTx();
+  else if(activeTab==='plan') html=viewPlan();
+  else if(activeTab==='insights') html=viewInsights();
+  c.innerHTML=`<div class="view">${html}</div>`;
+}
+
+/* =====================================================================
+   CALCULATIONS
+   ===================================================================== */
+function monthTx(sp,ym){ return (sp.transactions||[]).filter(t=>txMonth(t)===ym); }
+function sumBy(txs,type){ return txs.filter(t=>t.type===type).reduce((a,t)=>a+(+t.amount||0),0); }
+function monthsSpan(sp){ // list of last 6 month keys
+  const out=[]; const now=parseYM(viewMonth);
+  for(let i=5;i>=0;i--){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); out.push(ymKey(d)); }
+  return out;
+}
+function catSpentMonth(sp,catId,ym){ return monthTx(sp,ym).filter(t=>t.categoryId===catId&&t.type==='expense').reduce((a,t)=>a+(+t.amount||0),0); }
+function incomeBasis(sp,ym){ // this month's income, fallback to 3-mo avg
+  const im=sumBy(monthTx(sp,ym),'income'); if(im>0) return im;
+  let tot=0,n=0; const now=parseYM(ym);
+  for(let i=1;i<=3;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); tot+=sumBy(monthTx(sp,ymKey(d)),'income'); n++; }
+  return n? tot/n : 0;
+}
+function effectiveTarget(sp,cat,ym){ if(cat.useIncomePct){ return (cat.targetPct/100)*incomeBasis(sp,ym); } return +cat.target||0; }
+
+/* settle-up between the two members (shared).
+   net > 0  => partner owes you;  net < 0 => you owe partner. */
+function settleBalance(sp){
+  const mem=Object.keys(sp.members||{}); if(mem.length<2) return null;
+  const me=user.uid; const other=mem.find(m=>m!==me);
+  if(!other) return null;
+  let net=0; // running: positive means partner owes me
+  (sp.transactions||[]).filter(t=>t.type==='expense'&&t.split).forEach(t=>{
+    const shares=(t.split&&t.split.shares)||{};
+    const myShare = shares[me]!=null?(+shares[me]):(+t.amount/2);
+    const otherShare = shares[other]!=null?(+shares[other]):(+t.amount/2);
+    if(t.paidBy===me) net+=otherShare;        // partner owes me their share
+    else if(t.paidBy===other) net-=myShare;   // I owe payer my share
+  });
+  (sp.settlements||[]).forEach(s=>{
+    const amt=+s.amount||0;
+    if(s.from===other && s.to===me) net-=amt;  // partner paid me back -> they owe me less
+    else if(s.from===me && s.to===other) net+=amt; // I paid partner -> I owe less
+  });
+  net=Math.round(net*100)/100;
+  const otherName=(sp.members[other]&&sp.members[other].name)||'Partner';
+  return {net, other, otherName};
+}
+
+/* =====================================================================
+   VIEW: HOME
+   ===================================================================== */
+function viewHome(){
+  const sp=curSpace();
+  let h = monthNav();
+  const mtx=monthTx(sp,viewMonth);
+  const income=sumBy(mtx,'income'), expense=sumBy(mtx,'expense'), savings=income-expense;
+
+  // settle card (shared)
+  if(activeSpace==='shared'){ const bal=settleBalance(sp); if(bal){
+    const owe = bal.net>0.005, owed = bal.net<-0.005;
+    h+=`<div class="card settle">
+      <h3>🤝 Settle up</h3>
+      ${Math.abs(bal.net)<0.01
+        ? `<div class="big">All settled 🎉</div><div class="sub">You're even with ${bal.otherName}.</div>`
+        : owe
+          ? `<div class="big">${bal.otherName} owes you ${fmt(bal.net)}</div>`
+          : `<div class="big">You owe ${bal.otherName} ${fmt(-bal.net)}</div>`}
+      ${Math.abs(bal.net)>=0.01?`<button class="btn tonal mt8" onclick="openSettle()">Record a settle-up</button>`:''}
+    </div>`;
+  }}
+
+  // summary tiles
+  h+=`<div class="sum-grid">
+    <div class="sum-tile income"><div class="lbl">Income</div><div class="val">${fmt0(income)}</div></div>
+    <div class="sum-tile expense"><div class="lbl">Spent</div><div class="val">${fmt0(expense)}</div></div>
+    <div class="sum-tile save"><div class="lbl">Saved</div><div class="val ${savings>=0?'pos':'neg'}">${savings<0?'-':''}${fmt0(savings)}</div></div>
+  </div>`;
+
+  // savings goal
+  const goal=+sp.settings.savingsGoal||0;
+  if(goal>0){
+    const pct=Math.max(0,Math.min(100,(savings/goal)*100));
+    h+=`<div class="card"><h3>🎯 Savings goal</h3>
+      <div class="bar-row"><div class="top"><span class="amt"><b>${fmt(Math.max(0,savings))}</b> of ${fmt(goal)}</span>
+        <span class="pill ${savings>=goal?'ok':'over'}">${Math.round(pct)}%</span></div>
+        <div class="track"><div class="fill ${savings<0?'over':''}" style="width:${pct}%"></div></div></div>
+    </div>`;
+  }
+
+  // 50/30/20
+  h+=view503020(sp,mtx,income);
+
+  // budget vs actual
+  const exCats=(sp.categories||[]).filter(c=>c.type==='expense');
+  const withTargets=exCats.filter(c=>effectiveTarget(sp,c,viewMonth)>0)
+    .map(c=>({c,spent:catSpentMonth(sp,c.id,viewMonth),tgt:effectiveTarget(sp,c,viewMonth)}))
+    .sort((a,b)=> (b.spent/b.tgt)-(a.spent/a.tgt));
+  h+=`<div class="card"><h3>📊 Budget vs actual</h3>`;
+  if(!withTargets.length){
+    h+=`<div class="sub">No category targets set yet. <a onclick="setTab('plan')" style="color:var(--primary);text-decoration:underline">Set some in Plan →</a></div>`;
+  } else {
+    withTargets.forEach(({c,spent,tgt})=>{
+      const pct=Math.min(100,(spent/tgt)*100); const over=spent>tgt;
+      h+=`<div class="bar-row"><div class="top"><span>${c.icon||'•'} ${c.name}</span>
+        <span class="amt"><b>${fmt0(spent)}</b> / ${fmt0(tgt)}</span></div>
+        <div class="track"><div class="fill ${over?'over':(pct>85?'warn':'')}" style="width:${pct}%"></div></div></div>`;
+    });
+  }
+  h+=`</div>`;
+  return h;
+}
+
+function view503020(sp,mtx,income){
+  const base = income>0?income:sumBy(mtx,'expense');
+  const g={need:0,want:0,savings:0};
+  mtx.filter(t=>t.type==='expense').forEach(t=>{ const c=catById(sp,t.categoryId); const grp=(c&&c.group)||'want'; g[grp]=(g[grp]||0)+(+t.amount||0); });
+  const spent=g.need+g.want; const saved=Math.max(0,income-spent);
+  const tot=g.need+g.want+saved||1;
+  const p=x=>Math.round((x/tot)*100);
+  return `<div class="card"><h3>⚖️ 50 / 30 / 20</h3>
+    <div class="tri">
+      <span class="need" style="width:${(g.need/tot)*100}%"></span>
+      <span class="want" style="width:${(g.want/tot)*100}%"></span>
+      <span class="sav" style="width:${(saved/tot)*100}%"></span>
+    </div>
+    <div class="tri-legend">
+      <span class="k"><span class="dot" style="background:var(--primary)"></span>Needs ${p(g.need)}% <span class="muted">/50</span></span>
+      <span class="k"><span class="dot" style="background:var(--secondary)"></span>Wants ${p(g.want)}% <span class="muted">/30</span></span>
+      <span class="k"><span class="dot" style="background:var(--tertiary)"></span>Savings ${p(saved)}% <span class="muted">/20</span></span>
+    </div>
+    <div class="sub mt8">${income>0?'Based on this month’s income.':'Add income this month to see your true split.'}</div>
+  </div>`;
+}
+
+function monthNav(){
+  return `<div class="month-nav">
+    <button onclick="changeMonth(-1)">‹</button>
+    <div class="label">${monthLabel(viewMonth)}</div>
+    <button onclick="changeMonth(1)">›</button>
+  </div>`;
+}
+function changeMonth(d){ const nd=parseYM(viewMonth); nd.setMonth(nd.getMonth()+d); viewMonth=ymKey(nd); render(); }
+
+/* =====================================================================
+   VIEW: TRANSACTIONS
+   ===================================================================== */
+let txFilter='all';
+function viewTx(){
+  const sp=curSpace();
+  let h=monthNav();
+  const mtx=monthTx(sp,viewMonth).slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+  const filtered = txFilter==='all'?mtx : mtx.filter(t=>t.type===txFilter);
+  h+=`<div class="chips mb8" style="margin:0 0 12px">
+    ${['all','expense','income'].map(f=>`<button class="chip small ${txFilter===f?'active':''}" onclick="txFilter='${f}';render()">${f==='all'?'All':f==='expense'?'Expenses':'Income'}</button>`).join('')}
+  </div>`;
+  if(!filtered.length){ h+=`<div class="empty"><div class="em">🗒️</div>No transactions this month.<br>Tap ＋ to add one.</div>`; return h; }
+  let lastDay='';
+  filtered.forEach(t=>{
+    const day=t.date;
+    if(day!==lastDay){ lastDay=day; h+=`<div class="tx-day">${new Date(t.date+'T00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'})}</div>`; }
+    const c=catById(sp,t.categoryId)||{icon:'❓',name:'Uncategorized'};
+    const isInc=t.type==='income';
+    let sub = c.name + (t.vendor?` · ${t.vendor}`:'');
+    if(activeSpace==='shared'){ const payer=paidByName(sp,t); sub+= payer?` · ${payer}`:''; }
+    h+=`<div class="tx ${isInc?'inc':''}" onclick="openEdit('${t.id}')">
+      <div class="ic">${c.icon||'•'}</div>
+      <div class="mid"><div class="t1">${c.name}</div><div class="t2">${t.vendor||t.note||sub}</div></div>
+      <div class="amt ${isInc?'inc':''}">${isInc?'+':'-'}${fmt(t.amount)}</div>
+    </div>`;
+  });
+  return h;
+}
+function paidByName(sp,t){ if(!t.paidBy) return ''; if(t.paidBy===user.uid) return 'You paid'; const m=sp.members[t.paidBy]; return (m&&m.name?m.name:'Partner')+' paid'; }
+
+/* =====================================================================
+   VIEW: PLAN
+   ===================================================================== */
+function viewPlan(){
+  const sp=curSpace();
+  let h='';
+  // savings goal
+  h+=`<div class="card"><h3>🎯 Monthly savings goal</h3>
+    <div class="field"><label>How much do you want to save each month?</label>
+      <input class="input" type="number" inputmode="decimal" value="${sp.settings.savingsGoal||''}" placeholder="0"
+        onchange="setSavingsGoal(this.value)"></div>
+    <div class="sub">Shown as a progress ring on Home.</div>
+  </div>`;
+
+  // category targets
+  const exCats=(sp.categories||[]).filter(c=>c.type==='expense');
+  h+=`<div class="card"><h3>📊 Category budgets</h3>
+    <div class="sub mb8">Set a monthly target per category. Toggle <b>%</b> to budget as a percentage of income instead.</div>`;
+  exCats.forEach(c=>{
+    const useP=c.useIncomePct;
+    h+=`<div class="bar-row" style="margin-bottom:16px">
+      <div class="between">
+        <span style="font-weight:600">${c.icon||'•'} ${c.name} <span class="member-badge">${GROUPS[c.group]||''}</span></span>
+        <div class="flex">
+          <div class="type-toggle" style="margin:0">
+            <button class="${!useP?'active exp':''}" style="padding:5px 12px;font-size:.8rem" onclick="setCatMode('${c.id}',false)">$</button>
+            <button class="${useP?'active inc':''}" style="padding:5px 12px;font-size:.8rem" onclick="setCatMode('${c.id}',true)">%</button>
+          </div>
+        </div>
+      </div>
+      <div class="flex mt8">
+        ${useP
+          ? `<input class="input" type="number" inputmode="decimal" style="max-width:110px" value="${c.targetPct||''}" placeholder="0" onchange="setCatTarget('${c.id}','pct',this.value)"><span class="muted">% of income ≈ ${fmt0(effectiveTarget(sp,c,viewMonth))}/mo</span>`
+          : `<span class="muted">${CUR_SYMBOL}</span><input class="input" type="number" inputmode="decimal" style="max-width:140px" value="${c.target||''}" placeholder="0" onchange="setCatTarget('${c.id}','amt',this.value)"><span class="muted">/ month</span>`}
+      </div>
+    </div>`;
+  });
+  h+=`<button class="btn text" onclick="openSheet('managecats')">✏️ Manage categories & groups</button></div>`;
+  return h;
+}
+function setSavingsGoal(v){ curSpace().settings.savingsGoal=+v||0; saveSpace(activeSpace); toast('Savings goal updated'); }
+function setCatMode(id,useP){ const c=catById(curSpace(),id); if(c){c.useIncomePct=useP; saveSpace(activeSpace); render();} }
+function setCatTarget(id,kind,v){ const c=catById(curSpace(),id); if(!c)return; if(kind==='pct')c.targetPct=+v||0; else c.target=+v||0; saveSpace(activeSpace); render(); }
+
+/* =====================================================================
+   VIEW: INSIGHTS
+   ===================================================================== */
+function viewInsights(){
+  const sp=curSpace();
+  const months=monthsSpan(sp);
+  const rows=months.map(m=>({m,inc:sumBy(monthTx(sp,m),'income'),exp:sumBy(monthTx(sp,m),'expense')}));
+  const max=Math.max(1,...rows.map(r=>Math.max(r.inc,r.exp)));
+  let h=`<div class="card"><h3>📈 Last 6 months</h3>
+    <div class="mbars">
+      ${rows.map(r=>`<div class="mbar">
+        <div class="stack">
+          <div class="seg inc" style="height:${(r.inc/max)*100}%" title="Income ${fmt(r.inc)}"></div>
+        </div>
+        <div class="stack">
+          <div class="seg exp" style="height:${(r.exp/max)*100}%" title="Expense ${fmt(r.exp)}"></div>
+        </div>
+        <div class="ml">${parseYM(r.m).toLocaleDateString('en-CA',{month:'short'})}</div>
+      </div>`).join('')}
+    </div>
+    <div class="tri-legend mt8"><span class="k"><span class="dot" style="background:var(--tertiary)"></span>Income</span><span class="k"><span class="dot" style="background:var(--secondary)"></span>Expenses</span></div>
+  </div>`;
+
+  // category breakdown this month
+  const mtx=monthTx(sp,viewMonth).filter(t=>t.type==='expense');
+  const byCat={};
+  mtx.forEach(t=>{ byCat[t.categoryId]=(byCat[t.categoryId]||0)+(+t.amount||0); });
+  const arr=Object.entries(byCat).map(([id,v])=>({c:catById(sp,id)||{name:'?',icon:'❓'},v})).sort((a,b)=>b.v-a.v);
+  const totExp=arr.reduce((a,x)=>a+x.v,0)||1;
+  h+=`<div class="card"><h3>🧁 ${monthLabel(viewMonth)} — where it went</h3>`;
+  if(!arr.length) h+=`<div class="sub">No expenses this month.</div>`;
+  else arr.forEach(({c,v})=>{
+    const pct=(v/totExp)*100;
+    h+=`<div class="bar-row"><div class="top"><span>${c.icon||'•'} ${c.name}</span><span class="amt"><b>${fmt0(v)}</b> · ${Math.round(pct)}%</span></div>
+      <div class="track"><div class="fill" style="width:${pct}%"></div></div></div>`;
+  });
+  h+=`</div>`;
+  return h;
+}
+
+/* =====================================================================
+   SHARED SPACE SETUP (create / join)
+   ===================================================================== */
+function viewSharedSetup(){
+  return `<div class="empty" style="padding:30px 8px">
+    <div class="em">🤝</div>
+    <h2 style="margin-bottom:6px">Set up your Shared space</h2>
+    <p class="muted" style="max-width:340px;margin:0 auto 20px">A joint budget you and your partner both see — for rent, groceries, dates. Split expenses and settle up.</p>
+    <button class="btn filled block mb8" style="max-width:320px;margin:0 auto 10px" onclick="createShared()">✨ Create a shared space</button>
+    <button class="btn outline block" style="max-width:320px;margin:0 auto" onclick="openSheet('joinshared')">🔑 Join with an invite code</button>
+  </div>`;
+}
+function makeCode(){ return Math.random().toString(36).slice(2,7).toUpperCase(); }
+function createShared(){
+  const sp=blankSpace(); sp.categories=buildDefaultCats(); sp.settings.savingsGoal=0;
+  sp.members[user.uid]={name:user.name}; sp.inviteCode=makeCode();
+  if(TEST_MODE){
+    sp.id='shared';
+    // in test mode add both fake people so you can test split immediately
+    sp.members['u1']={name:TEST_PEOPLE.u1.name}; sp.members['u2']={name:TEST_PEOPLE.u2.name};
+    data.shared=sp; saveSpace('shared'); render();
+    toast('Shared space created (both test users added)');
+  } else {
+    const sid='sp_'+uid();
+    sp.id=sid; data.shared=sp;
+    db.ref('shared/'+sid).set(stripForSave(sp));
+    db.ref('users/'+user.uid+'/sharedSpace').set(sid);
+    attachSharedIfMember(); render();
+    toast('Shared space created');
+  }
+}
+function joinShared(code){
+  code=(code||'').trim().toUpperCase();
+  if(TEST_MODE){
+    const s=JSON.parse(localStorage.getItem('nest_shared')||'null');
+    if(s&&s.inviteCode===code){ s.members[user.uid]={name:user.name}; data.shared=normalizeSpace(s); data.shared.id='shared'; saveSpace('shared'); closeSheet(); render(); toast('Joined shared space'); }
+    else toast('No space with that code (test)');
+    return;
+  }
+  // firebase: find space by scanning is expensive; store codes map
+  db.ref('inviteCodes/'+code).get().then(snap=>{
+    const sid=snap.val();
+    if(!sid){ toast('Invalid code'); return; }
+    db.ref('shared/'+sid+'/members/'+user.uid).set({name:user.name});
+    db.ref('users/'+user.uid+'/sharedSpace').set(sid);
+    closeSheet(); attachSharedIfMember(); render(); toast('Joined!');
+  });
+}
+
+/* =====================================================================
+   ADD / EDIT TRANSACTION  (bottom sheet)
+   ===================================================================== */
+function openAdd(){
+  const sp=curSpace();
+  if(activeSpace==='shared' && !sp){ setSpace('shared'); return; }
+  addDraft={id:null, amount:'', type:'expense', categoryId:null, date:todayStr(), vendor:'', note:'',
+            paidBy:user.uid, splitType:'equal', customMine:''};
+  renderAddSheet();
+}
+function openEdit(id){
+  const sp=curSpace(); const t=(sp.transactions||[]).find(x=>x.id===id); if(!t) return;
+  addDraft={id:t.id, amount:String(t.amount), type:t.type, categoryId:t.categoryId, date:t.date, vendor:t.vendor||'', note:t.note||'',
+            paidBy:t.paidBy||user.uid, splitType:(t.split&&t.split.type)||'equal', customMine:t.split&&t.split.shares?String(t.split.shares[user.uid]??''):''};
+  renderAddSheet(true);
+}
+function renderAddSheet(isEdit){
+  const sp=curSpace(); const d=addDraft;
+  const cats=(sp.categories||[]).filter(c=>c.type===d.type);
+  const shared=activeSpace==='shared';
+  let members = shared? Object.entries(sp.members||{}).map(([uidx,m])=>({uid:uidx,name:m.name||'?'})):[];
+  let html=`<div class="grabber"></div>
+    <div class="between"><h2 style="margin:0">${isEdit?'Edit':'Add'} ${d.type}</h2>
+      ${isEdit?`<button class="icon-btn" onclick="deleteTx('${d.id}')" title="Delete">🗑️</button>`:''}</div>
+    <div class="type-toggle">
+      <button class="exp ${d.type==='expense'?'active':''}" onclick="setDraftType('expense')">Expense</button>
+      <button class="inc ${d.type==='income'?'active':''}" onclick="setDraftType('income')">Income</button>
+    </div>
+    <div class="amount-display"><span class="cur">${CUR_SYMBOL}</span><span class="num" id="amtNum">${d.amount||'0'}</span></div>
+    <div class="keypad">
+      ${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<div class="key" onclick="keyPress('${k}')">${k}</div>`).join('')}
+    </div>
+    <div class="field"><label>Category</label><div class="chips">
+      ${cats.map(c=>`<button class="chip ${d.categoryId===c.id?'active':''}" onclick="setDraftCat('${c.id}')">${c.icon||'•'} ${c.name}</button>`).join('')}
+    </div></div>`;
+
+  if(shared && d.type==='expense'){
+    html+=`<div class="field"><label>Who paid?</label><div class="chips">
+      ${members.map(m=>`<button class="chip ${d.paidBy===m.uid?'active':''}" onclick="setDraftPayer('${m.uid}')">${m.uid===user.uid?'You':m.name}</button>`).join('')}
+    </div></div>
+    <div class="field"><label>Split</label><div class="chips">
+      <button class="chip ${d.splitType==='equal'?'active':''}" onclick="setSplit('equal')">50 / 50</button>
+      <button class="chip ${d.splitType==='full'?'active':''}" onclick="setSplit('full')">Payer covers all</button>
+      <button class="chip ${d.splitType==='custom'?'active':''}" onclick="setSplit('custom')">Custom</button>
+    </div>
+    ${d.splitType==='custom'?`<div class="flex mt8"><span class="muted">Your share ${CUR_SYMBOL}</span><input class="input" style="max-width:130px" type="number" inputmode="decimal" value="${d.customMine}" oninput="addDraft.customMine=this.value"></div>`:''}
+    </div>`;
+  }
+
+  html+=`<div class="row2">
+      <div class="field"><label>Date</label><input class="input" type="date" value="${d.date}" onchange="addDraft.date=this.value"></div>
+      <div class="field"><label>${d.type==='income'?'Source':'Store / Vendor'}</label><input class="input" value="${d.vendor}" oninput="addDraft.vendor=this.value" placeholder="Optional"></div>
+    </div>
+    <div class="field"><label>Note</label><input class="input" value="${d.note}" oninput="addDraft.note=this.value" placeholder="Optional"></div>
+    <button class="btn filled block" onclick="saveTx()">${isEdit?'Save changes':'Add '+d.type}</button>`;
+  openSheetHTML(html);
+}
+function setDraftType(t){ addDraft.type=t; addDraft.categoryId=null; renderAddSheet(!!addDraft.id); }
+function setDraftCat(id){ addDraft.categoryId=id; document.querySelectorAll('#sheet .chips .chip').forEach(()=>{}); renderAddSheet(!!addDraft.id); }
+function setDraftPayer(u){ addDraft.paidBy=u; renderAddSheet(!!addDraft.id); }
+function setSplit(s){ addDraft.splitType=s; renderAddSheet(!!addDraft.id); }
+function keyPress(k){
+  let a=addDraft.amount||'';
+  if(k==='⌫'){ a=a.slice(0,-1); }
+  else if(k==='.'){ if(!a.includes('.')) a=(a||'0')+'.'; }
+  else { if(a.includes('.')&&a.split('.')[1].length>=2) return; a=(a==='0'?'':a)+k; }
+  addDraft.amount=a; const el=document.getElementById('amtNum'); if(el) el.textContent=a||'0';
+}
+function saveTx(){
+  const d=addDraft; const amt=parseFloat(d.amount);
+  if(!amt||amt<=0){ toast('Enter an amount'); return; }
+  if(!d.categoryId){ toast('Pick a category'); return; }
+  const sp=curSpace();
+  const t={id:d.id||uid(), date:d.date, amount:Math.round(amt*100)/100, categoryId:d.categoryId, vendor:d.vendor.trim(), note:d.note.trim(), type:d.type};
+  if(activeSpace==='shared' && d.type==='expense'){
+    t.paidBy=d.paidBy;
+    const mem=Object.keys(sp.members||{}); const other=mem.find(m=>m!==d.paidBy);
+    if(d.splitType==='equal'){ const half=Math.round(amt/2*100)/100; t.split={type:'equal',shares:{[d.paidBy]:amt-half,[other]:half}}; }
+    else if(d.splitType==='full'){ t.split={type:'full',shares:{[d.paidBy]:amt,[other]:0}}; }
+    else { const mine=parseFloat(d.customMine)||0; const theirs=Math.round((amt-mine)*100)/100; t.split={type:'custom',shares:{[user.uid]:mine,[other]:theirs}}; }
+  }
+  sp.transactions=asArray(sp.transactions);
+  if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0) sp.transactions[i]=t; }
+  else sp.transactions.push(t);
+  saveSpace(activeSpace); closeSheet(); render();
+  toast(d.id?'Updated':'Added '+fmt(amt));
+}
+function deleteTx(id){
+  const sp=curSpace(); sp.transactions=asArray(sp.transactions).filter(t=>t.id!==id);
+  saveSpace(activeSpace); closeSheet(); render(); toast('Deleted');
+}
+
+/* =====================================================================
+   SETTLE UP
+   ===================================================================== */
+function openSettle(){
+  const sp=curSpace(); const bal=settleBalance(sp); if(!bal) return;
+  const youOwe = bal.net<0; const amt=Math.abs(bal.net);
+  const html=`<div class="grabber"></div><h2>Record a settle-up</h2>
+    <p class="muted">${youOwe?`You pay ${bal.otherName}`:`${bal.otherName} pays you`} <b>${fmt(amt)}</b> to even out.</p>
+    <div class="field"><label>Amount</label><div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="settleAmt" class="input" type="number" inputmode="decimal" value="${amt.toFixed(2)}"></div></div>
+    <button class="btn filled block" onclick="recordSettle(${youOwe})">Mark as paid</button>`;
+  openSheetHTML(html);
+}
+function recordSettle(youOwe){
+  const sp=curSpace(); const bal=settleBalance(sp);
+  const amt=parseFloat(document.getElementById('settleAmt').value)||0; if(amt<=0){toast('Enter amount');return;}
+  sp.settlements=asArray(sp.settlements);
+  sp.settlements.push({id:uid(),date:todayStr(),
+    from: youOwe?user.uid:bal.other, to: youOwe?bal.other:user.uid, amount:amt});
+  saveSpace('shared'); closeSheet(); render(); toast('Settled '+fmt(amt));
+}
+
+/* =====================================================================
+   SHEETS: settings, manage cats, join, test switch
+   ===================================================================== */
+function openSheet(which){
+  let html='';
+  if(which==='settings') html=sheetSettings();
+  else if(which==='managecats') html=sheetManageCats();
+  else if(which==='joinshared') html=sheetJoin();
+  else if(which==='testswitch') html=sheetTestSwitch();
+  else if(which==='addcat') html=sheetAddCat();
+  openSheetHTML(html);
+}
+function sheetSettings(){
+  const sp=curSpace();
+  let h=`<div class="grabber"></div><h2>Settings</h2>
+    <div class="card" style="box-shadow:none;background:var(--surface-container)">
+      <div class="between"><div><b>${user.name}</b><div class="sub">${user.email||''}</div></div><span class="member-badge">${TEST_MODE?'test':'signed in'}</span></div>
+    </div>`;
+  if(activeSpace==='shared'&&data.shared){
+    h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
+      <h3>🤝 Shared space</h3>
+      <div class="sub mb8">Invite code — share this with your partner so they can join:</div>
+      <div class="between"><span style="font-size:1.6rem;font-weight:800;letter-spacing:3px">${data.shared.inviteCode||'—'}</span>
+        <button class="btn tonal" onclick="navigator.clipboard&&navigator.clipboard.writeText('${data.shared.inviteCode||''}');toast('Code copied')">Copy</button></div>
+      <div class="sub mt8">Members: ${Object.values(data.shared.members||{}).map(m=>m.name).join(', ')}</div>
+    </div>`;
+  }
+  h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
+    <h3>Appearance</h3>
+    <button class="btn outline block" onclick="toggleTheme();openSheet('settings')">Toggle light / dark</button>
+  </div>`;
+  h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
+    <h3>Data</h3>
+    <button class="btn outline block mb8" onclick="exportData()">⬇️ Export backup (JSON)</button>
+    ${TEST_MODE?`<button class="btn danger block" onclick="resetTest()">Reset test data</button>`:`<button class="btn danger block" onclick="doSignOut()">Sign out</button>`}
+  </div>`;
+  h+=`<div class="sub" style="text-align:center;margin-top:8px">Nest · ${TEST_MODE?'test mode':'v1'}</div>`;
+  return h;
+}
+function sheetManageCats(){
+  const sp=curSpace();
+  let h=`<div class="grabber"></div><div class="between"><h2 style="margin:0">Categories</h2><button class="btn text" onclick="openSheet('addcat')">＋ Add</button></div>`;
+  ['expense','income'].forEach(type=>{
+    const cats=(sp.categories||[]).filter(c=>c.type===type);
+    h+=`<div class="tx-day">${type==='expense'?'EXPENSE':'INCOME'} CATEGORIES</div>`;
+    cats.forEach(c=>{
+      h+=`<div class="tx">
+        <div class="ic">${c.icon||'•'}</div>
+        <div class="mid"><div class="t1">${c.name}</div>
+          ${type==='expense'?`<div class="t2">
+            <select onchange="setCatGroup('${c.id}',this.value)" style="border:none;background:transparent;color:var(--on-surface-variant);font-size:.8rem">
+              ${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${c.group===k?'selected':''}>${v}</option>`).join('')}
+            </select></div>`:''}
+        </div>
+        <button class="icon-btn" onclick="deleteCat('${c.id}')">🗑️</button>
+      </div>`;
+    });
+  });
+  return h;
+}
+function sheetAddCat(){
+  return `<div class="grabber"></div><h2>New category</h2>
+    <div class="field"><label>Name</label><input id="ncName" class="input" placeholder="e.g. Pet care"></div>
+    <div class="field"><label>Emoji (optional)</label><input id="ncIcon" class="input" placeholder="🐾" maxlength="2"></div>
+    <div class="field"><label>Type</label><select id="ncType" class="input"><option value="expense">Expense</option><option value="income">Income</option></select></div>
+    <div class="field"><label>Group (for expenses)</label><select id="ncGroup" class="input">${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+    <button class="btn filled block" onclick="addCat()">Add category</button>`;
+}
+function addCat(){
+  const name=document.getElementById('ncName').value.trim(); if(!name){toast('Name required');return;}
+  const c={id:uid(),name,icon:document.getElementById('ncIcon').value.trim()||'•',type:document.getElementById('ncType').value,group:document.getElementById('ncGroup').value,target:0,useIncomePct:false,targetPct:0};
+  curSpace().categories=asArray(curSpace().categories); curSpace().categories.push(c);
+  saveSpace(activeSpace); openSheet('managecats'); render(); toast('Category added');
+}
+function setCatGroup(id,g){ const c=catById(curSpace(),id); if(c){c.group=g; saveSpace(activeSpace);} }
+function deleteCat(id){ const sp=curSpace(); const used=(sp.transactions||[]).some(t=>t.categoryId===id); if(used){ if(!confirm('This category has transactions. Delete anyway? (transactions stay but show uncategorized)'))return;} sp.categories=asArray(sp.categories).filter(c=>c.id!==id); saveSpace(activeSpace); openSheet('managecats'); render(); }
+function sheetJoin(){
+  return `<div class="grabber"></div><h2>Join a shared space</h2>
+    <p class="muted">Enter the invite code your partner gave you.</p>
+    <div class="field"><input id="joinCode" class="input" placeholder="e.g. AB3X9" style="text-transform:uppercase;font-size:1.4rem;letter-spacing:3px;text-align:center"></div>
+    <button class="btn filled block" onclick="joinShared(document.getElementById('joinCode').value)">Join</button>`;
+}
+function sheetTestSwitch(){
+  return `<div class="grabber"></div><h2>🧪 Switch test user</h2>
+    <p class="muted">Simulate each person to test the shared space + split/settle.</p>
+    ${Object.values(TEST_PEOPLE).map(p=>`<button class="btn ${p.uid===user.uid?'filled':'outline'} block mb8" onclick="switchTestUser('${p.uid}')">${p.name}${p.uid===user.uid?' (current)':''}</button>`).join('')}`;
+}
+
+/* =====================================================================
+   DATA export / reset / signout
+   ===================================================================== */
+function exportData(){
+  const blob=new Blob([JSON.stringify({personal:data.personal,shared:data.shared,exported:new Date().toISOString()},null,2)],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='nest-backup-'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+  toast('Backup downloaded');
+}
+function resetTest(){ if(!confirm('Reset ALL test data (personal + shared)?'))return; lsDel('nest_personal_u1'); lsDel('nest_personal_u2'); lsDel('nest_shared'); loadTestData(); closeSheet(); activeSpace='personal'; render(); toast('Test data reset'); }
+function doSignOut(){ if(auth) auth.signOut(); closeSheet(); }
+
+/* =====================================================================
+   SHEET plumbing
+   ===================================================================== */
+function openSheetHTML(html){ document.getElementById('sheet').innerHTML=html; document.getElementById('sheet').classList.add('show'); document.getElementById('scrim').classList.add('show'); }
+function closeSheet(){ document.getElementById('sheet').classList.remove('show'); document.getElementById('scrim').classList.remove('show'); }
+</script>
+</body>
+</html>
