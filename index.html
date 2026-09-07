@@ -428,10 +428,23 @@ function switchTestUser(u){
 }
 
 /* ---------------- FIREBASE MODE ---------------- */
+function signinMsg(t){ const el=document.getElementById('testSigninNote'); if(el) el.textContent=t||''; }
+function signInError(e){
+  if(!e) return;
+  const map={
+    'auth/operation-not-allowed':'Google sign-in isn’t enabled yet in Firebase (Authentication → Sign-in method).',
+    'auth/unauthorized-domain':'This domain isn’t authorized in Firebase (Authentication → Settings → Authorized domains).',
+    'auth/popup-blocked':'Your browser blocked the popup — retrying with a redirect…',
+    'auth/network-request-failed':'Network error — check your connection and try again.'
+  };
+  signinMsg(map[e.code] || ('Sign-in error: '+(e.code||e.message||e)));
+}
 function bootFirebase(){
   firebase.initializeApp(firebaseConfig);
   auth = firebase.auth(); db = firebase.database();
+  try{ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
   document.getElementById('signin').classList.remove('hidden');
+  auth.getRedirectResult().catch(e=>signInError(e));
   auth.onAuthStateChanged(async u=>{
     if(u){
       user={uid:u.uid,name:u.displayName||'Me',email:u.email,photo:u.photoURL||''};
@@ -448,8 +461,19 @@ function bootFirebase(){
 }
 function doSignIn(){
   if(TEST_MODE){ toast('Test mode — already signed in'); return; }
+  signinMsg('Opening Google sign-in…');
   const provider=new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider).catch(e=>{ auth.signInWithRedirect(provider); });
+  provider.setCustomParameters({prompt:'select_account'});
+  auth.signInWithPopup(provider)
+    .then(()=>signinMsg(''))
+    .catch(e=>{
+      if(e && (e.code==='auth/popup-blocked' || e.code==='auth/cancelled-popup-request' || e.code==='auth/popup-closed-by-user' || e.code==='auth/operation-not-supported-in-this-environment')){
+        signinMsg('Redirecting to Google…');
+        auth.signInWithRedirect(provider).catch(err=>signInError(err));
+      } else {
+        signInError(e);
+      }
+    });
 }
 function attachPersonal(){
   db.ref('personal/'+user.uid).on('value',snap=>{
