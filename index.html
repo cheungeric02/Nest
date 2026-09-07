@@ -171,6 +171,7 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{padding:9px 14px;border-radius:var(--r-full);background:var(--surface-container-high);font-size:.9rem;font-weight:500;border:1.5px solid transparent}
 .chip.active{background:var(--primary-container);color:var(--on-primary-container);border-color:var(--primary)}
+.chip.chip-add{background:transparent;color:var(--primary);border:1.5px dashed var(--primary);font-weight:700}
 .chip.small{padding:6px 12px;font-size:.82rem}
 
 /* forms */
@@ -1333,6 +1334,7 @@ function renderAddSheet(isEdit){
     </div>
     <div class="field"><label>Category</label><div class="chips">
       ${cats.map(c=>`<button class="chip ${d.categoryId===c.id?'active':''}" onclick="setDraftCat('${c.id}')">${c.icon||'•'} ${c.name}</button>`).join('')}
+      <button class="chip chip-add" onclick="openInlineAddCat()">＋ New</button>
     </div></div>`;
 
   if(shared && d.type==='expense'){
@@ -1373,6 +1375,31 @@ function setDraftSpace(s){
   renderAddSheet(!!addDraft.id);
 }
 function setDraftCat(id){ addDraft.categoryId=id; document.querySelectorAll('#sheet .chips .chip').forEach(()=>{}); renderAddSheet(!!addDraft.id); }
+// Create a category inline while adding an expense/income — lands in the draft's space (Personal or Shared)
+function openInlineAddCat(){
+  const t=addDraft.type, isExp=t==='expense';
+  let h=`<div class="grabber"></div>
+    <div class="between"><h2 style="margin:0">New ${t} category</h2>
+      <button class="btn text" onclick="renderAddSheet(!!addDraft.id)">← Back</button></div>
+    <div class="sub mb8">Adds to your <b>${addDraft.space==='shared'?'🤝 Shared':'👤 Personal'}</b> categories.</div>
+    <div class="field"><label>Name</label><input id="ncName" class="input" placeholder="e.g. Pet care"></div>
+    <div class="field"><label>Emoji (optional)</label><input id="ncIcon" class="input" placeholder="🐾" maxlength="2"></div>`;
+  if(isExp) h+=`<div class="field"><label>Group</label><select id="ncGroup" class="input">${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>`;
+  h+=`<button class="btn filled block" onclick="addCatInline()">Add &amp; select</button>`;
+  openSheetHTML(h);
+  const n=document.getElementById('ncName'); if(n) n.focus();
+}
+function addCatInline(){
+  const name=document.getElementById('ncName').value.trim(); if(!name){ toast('Name required'); return; }
+  const sp=draftSpace();
+  const g=document.getElementById('ncGroup');
+  const c={id:uid(), name, icon:(document.getElementById('ncIcon').value.trim()||'•'), type:addDraft.type, group:g?g.value:'need', target:0, useIncomePct:false, targetPct:0};
+  sp.categories=asArray(sp.categories); sp.categories.push(c);
+  saveSpace(addDraft.space);
+  addDraft.categoryId=c.id;
+  toast('Category added');
+  renderAddSheet(!!addDraft.id);
+}
 function setDraftPayer(u){ addDraft.paidBy=u; renderAddSheet(!!addDraft.id); }
 function setSplit(s){ addDraft.splitType=s; renderAddSheet(!!addDraft.id); }
 function setRepeat(r){ addDraft.repeat=r; renderAddSheet(!!addDraft.id); }
