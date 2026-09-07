@@ -640,10 +640,11 @@ function nextDate(ds,freq){ return freq==='weekly'?addDays(ds,7):freq==='biweekl
 const FREQ_LABEL={weekly:'Weekly', biweekly:'Every 2 weeks', monthly:'Monthly'};
 
 /* ---- shared expense split ---- */
-function computeSplit(sp,amt,paidBy,splitType,customMine){
-  const mem=Object.keys(sp.members||{}); const other=mem.find(m=>m!==paidBy);
+function computeSplit(sp,amt,paidBy,splitType,customMine,customPct){
+  const mem=Object.keys(sp.members||{}); const other=mem.find(m=>m!==paidBy); const partner=mem.find(m=>m!==user.uid);
   if(splitType==='full') return {type:'full',shares:{[paidBy]:amt,[other]:0}};
-  if(splitType==='custom'){ const partner=mem.find(m=>m!==user.uid); const mine=parseFloat(customMine)||0; const theirs=Math.round((amt-mine)*100)/100; return {type:'custom',shares:{[user.uid]:mine,[partner]:theirs}}; }
+  if(splitType==='custom'){ const mine=parseFloat(customMine)||0; const theirs=Math.round((amt-mine)*100)/100; return {type:'custom',shares:{[user.uid]:mine,[partner]:theirs}}; }
+  if(splitType==='custompct'){ const pct=Math.max(0,Math.min(100,parseFloat(customPct)||0)); const mine=Math.round(amt*pct/100*100)/100; const theirs=Math.round((amt-mine)*100)/100; return {type:'custompct',pct,shares:{[user.uid]:mine,[partner]:theirs}}; }
   const half=Math.round(amt/2*100)/100; return {type:'equal',shares:{[paidBy]:amt-half,[other]:half}};
 }
 /* my portion of a shared expense (for reflecting onto personal) */
@@ -677,7 +678,7 @@ function spentByCat(txs,catId){ return txs.filter(t=>t.type==='expense'&&t.categ
 function spaceKeyOf(sp){ return sp===data.personal?'personal':'shared'; }
 function buildRecurringTx(sp,rule,occ){
   const t={id:uid(), date:occ, amount:rule.amount, categoryId:rule.categoryId, vendor:rule.vendor||'', note:rule.note||'', type:rule.type, recurringId:rule.id, occ};
-  if(sp===data.shared && rule.type==='expense'){ t.paidBy=rule.paidBy||user.uid; t.split=computeSplit(sp,rule.amount,t.paidBy,rule.splitType||'equal',rule.customMine); }
+  if(sp===data.shared && rule.type==='expense'){ t.paidBy=rule.paidBy||user.uid; t.split=computeSplit(sp,rule.amount,t.paidBy,rule.splitType||'equal',rule.customMine,rule.customPct); }
   return t;
 }
 /* materialize occurrences from each rule's anchor up to today (idempotent via occ date) */
@@ -1047,31 +1048,43 @@ function joinShared(code){
    ADD / EDIT TRANSACTION  (bottom sheet)
    ===================================================================== */
 function openAdd(){
-  const sp=curSpace();
-  if(activeSpace==='shared' && !sp){ setSpace('shared'); return; }
-  addDraft={id:null, amount:'', type:'expense', categoryId:null, date:todayStr(), vendor:'', note:'',
-            paidBy:user.uid, splitType:'equal', customMine:'', repeat:'none'};
+  let space=activeSpace;
+  if(space==='shared' && !data.shared) space='personal';
+  addDraft={id:null, space, amount:'', type:'expense', categoryId:null, date:todayStr(), vendor:'', note:'',
+            paidBy:user.uid, splitType:'equal', customMine:'', customPct:'', repeat:'none'};
   renderAddSheet();
 }
 function openEdit(id){
   const sp=curSpace(); const t=(sp.transactions||[]).find(x=>x.id===id); if(!t) return;
-  addDraft={id:t.id, amount:String(t.amount), type:t.type, categoryId:t.categoryId, date:t.date, vendor:t.vendor||'', note:t.note||'',
-            paidBy:t.paidBy||user.uid, splitType:(t.split&&t.split.type)||'equal', customMine:t.split&&t.split.shares?String(t.split.shares[user.uid]??''):''};
+  addDraft={id:t.id, space:activeSpace, amount:String(t.amount), type:t.type, categoryId:t.categoryId, date:t.date, vendor:t.vendor||'', note:t.note||'',
+            paidBy:t.paidBy||user.uid, splitType:(t.split&&t.split.type)||'equal',
+            customMine:t.split&&t.split.shares?String(t.split.shares[user.uid]??''):'',
+            customPct:(t.split&&t.split.pct!=null)?String(t.split.pct):'', repeat:'none'};
   renderAddSheet(true);
 }
+function draftSpace(){ return addDraft.space==='shared'?data.shared:data.personal; }
 function renderAddSheet(isEdit){
-  const sp=curSpace(); const d=addDraft;
+  const d=addDraft;
+  if(d.type==='income') d.space=isEdit?d.space:activeSpace;  // income follows the space you're in
+  const sp=draftSpace();
   const cats=(sp.categories||[]).filter(c=>c.type===d.type);
-  const shared=activeSpace==='shared';
-  let members = shared? Object.entries(sp.members||{}).map(([uidx,m])=>({uid:uidx,name:m.name||'?'})):[];
+  const shared=d.space==='shared';
+  let members = shared? Object.entries((sp&&sp.members)||{}).map(([uidx,m])=>({uid:uidx,name:m.name||'?'})):[];
   let html=`<div class="grabber"></div>
     <div class="between"><h2 style="margin:0">${isEdit?'Edit':'Add'} ${d.type}</h2>
       ${isEdit?`<button class="icon-btn" onclick="deleteTx('${d.id}')" title="Delete">🗑️</button>`:''}</div>
     <div class="type-toggle">
       <button class="exp ${d.type==='expense'?'active':''}" onclick="setDraftType('expense')">Expense</button>
       <button class="inc ${d.type==='income'?'active':''}" onclick="setDraftType('income')">Income</button>
-    </div>
-    <div class="amount-display"><span class="cur">${CUR_SYMBOL}</span><span class="num" id="amtNum">${d.amount||'0'}</span></div>
+    </div>`;
+  // Personal / Shared chooser — expenses only, on add (edits stay in their space)
+  if(d.type==='expense' && !isEdit){
+    html+=`<div class="field" style="margin-top:8px"><label>Add to</label><div class="chips">
+      <button class="chip ${d.space==='personal'?'active':''}" onclick="setDraftSpace('personal')">👤 Personal</button>
+      <button class="chip ${d.space==='shared'?'active':''}" onclick="setDraftSpace('shared')">🤝 Shared</button>
+    </div>${d.space==='shared'?`<div class="sub mt8">Split it below — your share shows on your Personal budget too.</div>`:''}</div>`;
+  }
+  html+=`<div class="amount-display"><span class="cur">${CUR_SYMBOL}</span><span class="num" id="amtNum">${d.amount||'0'}</span></div>
     <div class="keypad">
       ${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<div class="key" onclick="keyPress('${k}')">${k}</div>`).join('')}
     </div>
@@ -1086,9 +1099,12 @@ function renderAddSheet(isEdit){
     <div class="field"><label>Split</label><div class="chips">
       <button class="chip ${d.splitType==='equal'?'active':''}" onclick="setSplit('equal')">50 / 50</button>
       <button class="chip ${d.splitType==='full'?'active':''}" onclick="setSplit('full')">Payer covers all</button>
-      <button class="chip ${d.splitType==='custom'?'active':''}" onclick="setSplit('custom')">Custom</button>
+      <button class="chip ${d.splitType==='custom'?'active':''}" onclick="setSplit('custom')">Custom ${CUR_SYMBOL}</button>
+      <button class="chip ${d.splitType==='custompct'?'active':''}" onclick="setSplit('custompct')">Custom %</button>
     </div>
-    ${d.splitType==='custom'?`<div class="flex mt8"><span class="muted">Your share ${CUR_SYMBOL}</span><input class="input" style="max-width:130px" type="number" inputmode="decimal" value="${d.customMine}" oninput="addDraft.customMine=this.value"></div>`:''}
+    ${d.splitType==='custom'?`<div class="flex mt8"><span class="muted">Your share ${CUR_SYMBOL}</span><input class="input" style="max-width:130px" type="number" inputmode="decimal" value="${d.customMine}" oninput="addDraft.customMine=this.value;updateSplitHint()"></div>`:''}
+    ${d.splitType==='custompct'?`<div class="flex mt8"><span class="muted">Your share %</span><input class="input" style="max-width:110px" type="number" inputmode="decimal" min="0" max="100" value="${d.customPct}" placeholder="e.g. 60" oninput="addDraft.customPct=this.value;updateSplitHint()"><span class="muted">partner covers the rest</span></div>`:''}
+    <div class="sub mt8" id="splitHint">${splitHintText(d)}</div>
     </div>`;
   }
 
@@ -1106,28 +1122,47 @@ function renderAddSheet(isEdit){
   openSheetHTML(html);
 }
 function setDraftType(t){ addDraft.type=t; addDraft.categoryId=null; renderAddSheet(!!addDraft.id); }
+function setDraftSpace(s){
+  if(s==='shared' && !data.shared){ toast('Set up a Shared space first — open the Shared tab.'); return; }
+  addDraft.space=s; addDraft.categoryId=null; // categories differ per space
+  renderAddSheet(!!addDraft.id);
+}
 function setDraftCat(id){ addDraft.categoryId=id; document.querySelectorAll('#sheet .chips .chip').forEach(()=>{}); renderAddSheet(!!addDraft.id); }
 function setDraftPayer(u){ addDraft.paidBy=u; renderAddSheet(!!addDraft.id); }
 function setSplit(s){ addDraft.splitType=s; renderAddSheet(!!addDraft.id); }
 function setRepeat(r){ addDraft.repeat=r; renderAddSheet(!!addDraft.id); }
+function splitHintText(d){
+  const amt=parseFloat(d.amount)||0; if(amt<=0) return '';
+  let mine=null;
+  if(d.splitType==='custompct'){ const p=Math.max(0,Math.min(100,parseFloat(d.customPct)||0)); mine=amt*p/100; }
+  else if(d.splitType==='custom'){ mine=parseFloat(d.customMine)||0; }
+  else if(d.splitType==='equal'){ mine=amt/2; }
+  else if(d.splitType==='full'){ mine=(d.paidBy===user.uid)?amt:0; }
+  if(mine==null) return '';
+  mine=Math.round(mine*100)/100; const theirs=Math.round((amt-mine)*100)/100;
+  return `You ${fmt(mine)} · Partner ${fmt(Math.max(0,theirs))}`;
+}
+function updateSplitHint(){ const el=document.getElementById('splitHint'); if(el) el.textContent=splitHintText(addDraft); }
 function keyPress(k){
   let a=addDraft.amount||'';
   if(k==='⌫'){ a=a.slice(0,-1); }
   else if(k==='.'){ if(!a.includes('.')) a=(a||'0')+'.'; }
   else { if(a.includes('.')&&a.split('.')[1].length>=2) return; a=(a==='0'?'':a)+k; }
   addDraft.amount=a; const el=document.getElementById('amtNum'); if(el) el.textContent=a||'0';
+  updateSplitHint();
 }
 function saveTx(){
   const d=addDraft; const amt=parseFloat(d.amount);
   if(!amt||amt<=0){ toast('Enter an amount'); return; }
   if(!d.categoryId){ toast('Pick a category'); return; }
-  const sp=curSpace(); const amtR=Math.round(amt*100)/100;
+  const sp=draftSpace(); const amtR=Math.round(amt*100)/100;
+  const isSharedExp = d.space==='shared' && d.type==='expense';
 
   // Recurring: create a rule (only on a fresh add), then generate occurrences.
   if(!d.id && d.repeat && d.repeat!=='none'){
     const rule={id:uid(), freq:d.repeat, anchor:d.date, amount:amtR, categoryId:d.categoryId,
       vendor:d.vendor.trim(), note:d.note.trim(), type:d.type, active:true, lastGen:null};
-    if(activeSpace==='shared' && d.type==='expense'){ rule.paidBy=d.paidBy; rule.splitType=d.splitType; rule.customMine=d.customMine; }
+    if(isSharedExp){ rule.paidBy=d.paidBy; rule.splitType=d.splitType; rule.customMine=d.customMine; rule.customPct=d.customPct; }
     sp.recurring=asArray(sp.recurring); sp.recurring.push(rule);
     runRecurring(sp); // generates + saves
     closeSheet(); render();
@@ -1136,19 +1171,19 @@ function saveTx(){
   }
 
   const t={id:d.id||uid(), date:d.date, amount:amtR, categoryId:d.categoryId, vendor:d.vendor.trim(), note:d.note.trim(), type:d.type};
-  if(activeSpace==='shared' && d.type==='expense'){
+  if(isSharedExp){
     t.paidBy=d.paidBy;
-    t.split=computeSplit(sp,amtR,d.paidBy,d.splitType,d.customMine);
+    t.split=computeSplit(sp,amtR,d.paidBy,d.splitType,d.customMine,d.customPct);
   }
   sp.transactions=asArray(sp.transactions);
   if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0){ t.recurringId=sp.transactions[i].recurringId; t.occ=sp.transactions[i].occ; sp.transactions[i]=t; } }
   else sp.transactions.push(t);
-  saveSpace(activeSpace); closeSheet(); render();
+  saveSpace(d.space); closeSheet(); render();
   toast(d.id?'Updated':'Added '+fmt(amt));
 }
 function deleteTx(id){
-  const sp=curSpace(); sp.transactions=asArray(sp.transactions).filter(t=>t.id!==id);
-  saveSpace(activeSpace); closeSheet(); render(); toast('Deleted');
+  const sp=draftSpace(); sp.transactions=asArray(sp.transactions).filter(t=>t.id!==id);
+  saveSpace(addDraft.space); closeSheet(); render(); toast('Deleted');
 }
 
 /* =====================================================================
