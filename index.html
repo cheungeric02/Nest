@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#3a6b4f">
 <title>Nest</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%AA%BA%3C/text%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <style>
@@ -145,6 +146,8 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .tx .mid .t2{font-size:.8rem;color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tx .amt{font-weight:700;white-space:nowrap}
 .tx .amt.inc{color:var(--success)}
+.tx.reflected{opacity:.9;background:var(--surface-container);border:1px dashed var(--outline-variant)}
+.tag{display:inline-block;font-size:.66rem;font-weight:700;padding:1px 7px;border-radius:var(--r-full);background:var(--secondary-container);color:var(--on-secondary-container);vertical-align:middle;margin-left:4px}
 
 /* chips */
 .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -384,7 +387,7 @@ let addDraft = null;
 let unsub = [];
 
 function blankSpace(){
-  return { categories:[], transactions:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
+  return { categories:[], transactions:[], recurring:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
 }
 
 /* =====================================================================
@@ -414,6 +417,7 @@ function loadTestData(){
   const s = JSON.parse(lsGet('nest_shared') || 'null');
   data.shared = s ? normalizeSpace(s) : null;
   if(!p) saveSpace('personal');
+  runRecurring(data.personal); runRecurring(data.shared);
 }
 function seedPersonal(){
   const sp = blankSpace();
@@ -491,6 +495,7 @@ function attachPersonal(){
     const v=snap.val();
     data.personal = v?normalizeSpace(v):seedFirstTime('personal');
     if(!v){ db.ref('personal/'+user.uid).set(stripForSave(data.personal)); }
+    runRecurring(data.personal);
     if(!TEST_MODE) render();
   }, err=>{
     if(err && err.code==='PERMISSION_DENIED') toast('Database rules not set yet — publish the security rules in Firebase.');
@@ -502,6 +507,7 @@ function attachShared(sid){
   db.ref('shared/'+sid).on('value',s=>{
     const v=s.val(); data.shared = v?normalizeSpace(v):null;
     data.shared && (data.shared.id=sid);
+    runRecurring(data.shared);
     render();
   });
 }
@@ -536,7 +542,8 @@ function normalizeSpace(sp){
     categories: asArray(sp.categories),
     transactions: asArray(sp.transactions),
     settlements: asArray(sp.settlements),
-    settings: sp.settings || {savingsGoal:0},
+    recurring: asArray(sp.recurring),
+    settings: sp.settings || {savingsGoal:0, paycheck:0},
     members: sp.members || {},
     inviteCode: sp.inviteCode || null,
     id: sp.id || null,
@@ -623,6 +630,74 @@ function monthsSpan(sp){ // list of last 6 month keys
 }
 function catSpentMonth(sp,catId,ym){ return monthTx(sp,ym).filter(t=>t.categoryId===catId&&t.type==='expense').reduce((a,t)=>a+(+t.amount||0),0); }
 function monthlySalary(sp){ return (+(sp.settings&&sp.settings.paycheck)||0)*26/12; } // bi-weekly paycheck × 26 / 12
+
+/* ---- date math for recurring ---- */
+function fmtDate(dt){ return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'); }
+function daysInMonth(y,m){ return new Date(y,m+1,0).getDate(); }
+function addDays(ds,n){ const [y,m,d]=ds.split('-').map(Number); const dt=new Date(y,m-1,d); dt.setDate(dt.getDate()+n); return fmtDate(dt); }
+function addMonths(ds,n){ const [y,m,d]=ds.split('-').map(Number); let ny=y, nm=m-1+n; ny+=Math.floor(nm/12); nm=((nm%12)+12)%12; const day=Math.min(d, daysInMonth(ny,nm)); return fmtDate(new Date(ny,nm,day)); }
+function nextDate(ds,freq){ return freq==='weekly'?addDays(ds,7):freq==='biweekly'?addDays(ds,14):addMonths(ds,1); }
+const FREQ_LABEL={weekly:'Weekly', biweekly:'Every 2 weeks', monthly:'Monthly'};
+
+/* ---- shared expense split ---- */
+function computeSplit(sp,amt,paidBy,splitType,customMine){
+  const mem=Object.keys(sp.members||{}); const other=mem.find(m=>m!==paidBy);
+  if(splitType==='full') return {type:'full',shares:{[paidBy]:amt,[other]:0}};
+  if(splitType==='custom'){ const partner=mem.find(m=>m!==user.uid); const mine=parseFloat(customMine)||0; const theirs=Math.round((amt-mine)*100)/100; return {type:'custom',shares:{[user.uid]:mine,[partner]:theirs}}; }
+  const half=Math.round(amt/2*100)/100; return {type:'equal',shares:{[paidBy]:amt-half,[other]:half}};
+}
+/* my portion of a shared expense (for reflecting onto personal) */
+function sharedMyShare(t){
+  if(t.type!=='expense') return 0;
+  const sh=t.split&&t.split.shares;
+  if(sh&&sh[user.uid]!=null) return +sh[user.uid]||0;
+  return (+t.amount||0)/2;
+}
+/* synthetic personal expenses = my share of this month's shared expenses, mapped to same-named personal category */
+function reflectedFromShared(ym){
+  const sh=data.shared; if(!sh) return [];
+  const pcats=(data.personal.categories||[]).filter(c=>c.type==='expense');
+  return monthTx(sh,ym).filter(t=>t.type==='expense').map(t=>{
+    const my=Math.round(sharedMyShare(t)*100)/100; if(my<=0) return null;
+    const scat=catById(sh,t.categoryId);
+    const pcat = scat? pcats.find(c=>c.name===scat.name) : null;
+    return { id:'shr_'+t.id, srcId:t.id, date:t.date, amount:my, type:'expense',
+             categoryId: pcat?pcat.id:null, _group:(pcat&&pcat.group)||(scat&&scat.group)||'want',
+             _shared:true, icon:(scat&&scat.icon)||'🤝', name:(scat&&scat.name)||'Shared',
+             vendor:t.vendor||'', note:'your share of a Shared expense' };
+  }).filter(Boolean);
+}
+/* personal month tx WITH reflected shared shares folded in */
+function personalMonthTx(ym){ return monthTx(data.personal,ym).concat(reflectedFromShared(ym)); }
+/* effective month tx for whichever space is active */
+function effMonthTx(sp,ym){ return (sp===data.personal)? personalMonthTx(ym) : monthTx(sp,ym); }
+function spentByCat(txs,catId){ return txs.filter(t=>t.type==='expense'&&t.categoryId===catId).reduce((a,t)=>a+(+t.amount||0),0); }
+
+/* ---- recurring engine ---- */
+function spaceKeyOf(sp){ return sp===data.personal?'personal':'shared'; }
+function buildRecurringTx(sp,rule,occ){
+  const t={id:uid(), date:occ, amount:rule.amount, categoryId:rule.categoryId, vendor:rule.vendor||'', note:rule.note||'', type:rule.type, recurringId:rule.id, occ};
+  if(sp===data.shared && rule.type==='expense'){ t.paidBy=rule.paidBy||user.uid; t.split=computeSplit(sp,rule.amount,t.paidBy,rule.splitType||'equal',rule.customMine); }
+  return t;
+}
+/* materialize occurrences from each rule's anchor up to today (idempotent via occ date) */
+function runRecurring(sp){
+  if(!sp) return; const rules=asArray(sp.recurring); if(!rules.length) return;
+  const todayS=todayStr(); let changed=false;
+  sp.transactions=asArray(sp.transactions);
+  rules.forEach(rule=>{
+    if(rule.active===false || !rule.anchor) return;
+    const existing=new Set(sp.transactions.filter(t=>t.recurringId===rule.id).map(t=>t.occ));
+    let occ = rule.lastGen ? nextDate(rule.lastGen,rule.freq) : rule.anchor;
+    let guard=0;
+    while(occ<=todayS && guard<500){
+      if(!existing.has(occ)){ sp.transactions.push(buildRecurringTx(sp,rule,occ)); existing.add(occ); changed=true; }
+      if(rule.lastGen!==occ){ rule.lastGen=occ; changed=true; }
+      occ=nextDate(occ,rule.freq); guard++;
+    }
+  });
+  if(changed) saveSpace(spaceKeyOf(sp));
+}
 function incomeBasis(sp,ym){ // salary if set, else this month's income, fallback to 3-mo avg
   const sal=monthlySalary(sp); if(sal>0) return sal;
   const im=sumBy(monthTx(sp,ym),'income'); if(im>0) return im;
@@ -662,8 +737,9 @@ function settleBalance(sp){
 function viewHome(){
   const sp=curSpace();
   let h = monthNav();
-  const mtx=monthTx(sp,viewMonth);
+  const mtx=effMonthTx(sp,viewMonth);
   const income=sumBy(mtx,'income'), expense=sumBy(mtx,'expense'), savings=income-expense;
+  const reflected = activeSpace==='personal' ? mtx.filter(t=>t._shared).reduce((a,t)=>a+(+t.amount||0),0) : 0;
 
   // settle card (shared)
   if(activeSpace==='shared'){ const bal=settleBalance(sp); if(bal){
@@ -685,6 +761,7 @@ function viewHome(){
     <div class="sum-tile expense"><div class="lbl">Spent</div><div class="val">${fmt0(expense)}</div></div>
     <div class="sum-tile save"><div class="lbl">Saved</div><div class="val ${savings>=0?'pos':'neg'}">${savings<0?'-':''}${fmt0(savings)}</div></div>
   </div>`;
+  if(reflected>0) h+=`<div class="sub" style="margin:-4px 2px 10px">🤝 Includes <b>${fmt0(reflected)}</b> — your share of Shared expenses this month.</div>`;
 
   // savings goal
   const goal=+sp.settings.savingsGoal||0;
@@ -703,7 +780,7 @@ function viewHome(){
   // budget vs actual
   const exCats=(sp.categories||[]).filter(c=>c.type==='expense');
   const withTargets=exCats.filter(c=>effectiveTarget(sp,c,viewMonth)>0)
-    .map(c=>({c,spent:catSpentMonth(sp,c.id,viewMonth),tgt:effectiveTarget(sp,c,viewMonth)}))
+    .map(c=>({c,spent:spentByCat(mtx,c.id),tgt:effectiveTarget(sp,c,viewMonth)}))
     .sort((a,b)=> (b.spent/b.tgt)-(a.spent/a.tgt));
   h+=`<div class="card"><h3>📊 Budget vs actual</h3>`;
   if(!withTargets.length){
@@ -723,7 +800,7 @@ function viewHome(){
 function view503020(sp,mtx,income){
   const base = income>0?income:sumBy(mtx,'expense');
   const g={need:0,want:0,savings:0};
-  mtx.filter(t=>t.type==='expense').forEach(t=>{ const c=catById(sp,t.categoryId); const grp=(c&&c.group)||'want'; g[grp]=(g[grp]||0)+(+t.amount||0); });
+  mtx.filter(t=>t.type==='expense').forEach(t=>{ const c=catById(sp,t.categoryId); const grp=t._group||(c&&c.group)||'want'; g[grp]=(g[grp]||0)+(+t.amount||0); });
   const spent=g.need+g.want; const saved=Math.max(0,income-spent);
   const tot=g.need+g.want+saved||1;
   const p=x=>Math.round((x/tot)*100);
@@ -758,7 +835,7 @@ let txFilter='all';
 function viewTx(){
   const sp=curSpace();
   let h=monthNav();
-  const mtx=monthTx(sp,viewMonth).slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+  const mtx=effMonthTx(sp,viewMonth).slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
   const filtered = txFilter==='all'?mtx : mtx.filter(t=>t.type===txFilter);
   h+=`<div class="chips mb8" style="margin:0 0 12px">
     ${['all','expense','income'].map(f=>`<button class="chip small ${txFilter===f?'active':''}" onclick="txFilter='${f}';render()">${f==='all'?'All':f==='expense'?'Expenses':'Income'}</button>`).join('')}
@@ -768,19 +845,23 @@ function viewTx(){
   filtered.forEach(t=>{
     const day=t.date;
     if(day!==lastDay){ lastDay=day; h+=`<div class="tx-day">${new Date(t.date+'T00:00').toLocaleDateString('en-CA',{weekday:'short',month:'short',day:'numeric'})}</div>`; }
-    const c=catById(sp,t.categoryId)||{icon:'❓',name:'Uncategorized'};
+    const c = t._shared ? {icon:t.icon,name:t.name} : (catById(sp,t.categoryId)||{icon:'❓',name:'Uncategorized'});
     const isInc=t.type==='income';
     let sub = c.name + (t.vendor?` · ${t.vendor}`:'');
     if(activeSpace==='shared'){ const payer=paidByName(sp,t); sub+= payer?` · ${payer}`:''; }
-    h+=`<div class="tx ${isInc?'inc':''}" onclick="openEdit('${t.id}')">
+    const isRec = !t._shared && !!t.recurringId;
+    const tag = t._shared ? `<span class="tag">🤝 Shared</span>` : (isRec?`<span class="tag">🔁</span>`:'');
+    const click = t._shared ? `openReflected('${t.srcId}')` : `openEdit('${t.id}')`;
+    h+=`<div class="tx ${isInc?'inc':''}${t._shared?' reflected':''}" onclick="${click}">
       <div class="ic">${c.icon||'•'}</div>
-      <div class="mid"><div class="t1">${c.name}</div><div class="t2">${t.vendor||t.note||sub}</div></div>
+      <div class="mid"><div class="t1">${c.name} ${tag}</div><div class="t2">${t._shared?'your share of a Shared expense':(t.vendor||t.note||sub)}</div></div>
       <div class="amt ${isInc?'inc':''}">${isInc?'+':'-'}${fmt(t.amount)}</div>
     </div>`;
   });
   return h;
 }
 function paidByName(sp,t){ if(!t.paidBy) return ''; if(t.paidBy===user.uid) return 'You paid'; const m=sp.members[t.paidBy]; return (m&&m.name?m.name:'Partner')+' paid'; }
+function openReflected(srcId){ toast('This is your share of a Shared expense — edit it on the Shared side.'); activeSpace='shared'; render(); if(srcId) openEdit(srcId); }
 
 /* =====================================================================
    VIEW: PLAN
@@ -812,6 +893,23 @@ function viewPlan(){
       <button class="btn text" style="padding:4px 10px" onclick="applyRecSavings()">Use</button></div>`:''}
     <div class="sub">Shown as a progress ring on Home.</div>
   </div>`;
+
+  // recurring rules
+  const rules=asArray(sp.recurring);
+  h+=`<div class="card"><h3>🔁 Recurring</h3>
+    <div class="sub mb8">Rent, bills, paycheques — added automatically on schedule. Add one from ＋ with a Repeat option.</div>`;
+  if(!rules.length){ h+=`<div class="sub">Nothing recurring yet.</div>`; }
+  else rules.forEach(r=>{
+    const c=catById(sp,r.categoryId)||{icon:'•',name:'—'};
+    h+=`<div class="tx">
+      <div class="ic">${c.icon||'•'}</div>
+      <div class="mid"><div class="t1">${c.name} ${r.active===false?'<span class="tag">paused</span>':''}</div>
+        <div class="t2">${r.type==='income'?'+':'-'}${fmt(r.amount)} · ${FREQ_LABEL[r.freq]||r.freq}${r.vendor?' · '+r.vendor:''}</div></div>
+      <button class="icon-btn" onclick="toggleRecurring('${r.id}')" title="${r.active===false?'Resume':'Pause'}">${r.active===false?'▶️':'⏸️'}</button>
+      <button class="icon-btn" onclick="deleteRecurring('${r.id}')" title="Delete">🗑️</button>
+    </div>`;
+  });
+  h+=`</div>`;
 
   // category targets
   const exCats=(sp.categories||[]).filter(c=>c.type==='expense');
@@ -850,6 +948,8 @@ function applyAllRec(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=
 function setSavingsGoal(v){ curSpace().settings.savingsGoal=+v||0; saveSpace(activeSpace); toast('Savings goal updated'); }
 function setCatMode(id,useP){ const c=catById(curSpace(),id); if(c){c.useIncomePct=useP; saveSpace(activeSpace); render();} }
 function setCatTarget(id,kind,v){ const c=catById(curSpace(),id); if(!c)return; if(kind==='pct')c.targetPct=+v||0; else c.target=+v||0; saveSpace(activeSpace); render(); }
+function toggleRecurring(id){ const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id); if(!r)return; r.active=r.active===false; if(r.active) runRecurring(sp); else saveSpace(activeSpace); render(); toast(r.active?'Resumed':'Paused'); }
+function deleteRecurring(id){ const sp=curSpace(); if(!confirm('Delete this recurring rule? Entries already added will stay.'))return; sp.recurring=asArray(sp.recurring).filter(x=>x.id!==id); saveSpace(activeSpace); render(); toast('Recurring deleted'); }
 
 /* =====================================================================
    VIEW: INSIGHTS
@@ -857,7 +957,7 @@ function setCatTarget(id,kind,v){ const c=catById(curSpace(),id); if(!c)return; 
 function viewInsights(){
   const sp=curSpace();
   const months=monthsSpan(sp);
-  const rows=months.map(m=>({m,inc:sumBy(monthTx(sp,m),'income'),exp:sumBy(monthTx(sp,m),'expense')}));
+  const rows=months.map(m=>({m,inc:sumBy(effMonthTx(sp,m),'income'),exp:sumBy(effMonthTx(sp,m),'expense')}));
   const max=Math.max(1,...rows.map(r=>Math.max(r.inc,r.exp)));
   let h=`<div class="card"><h3>📈 Last 6 months</h3>
     <div class="mbars">
@@ -875,10 +975,10 @@ function viewInsights(){
   </div>`;
 
   // category breakdown this month
-  const mtx=monthTx(sp,viewMonth).filter(t=>t.type==='expense');
+  const mtx=effMonthTx(sp,viewMonth).filter(t=>t.type==='expense');
   const byCat={};
-  mtx.forEach(t=>{ byCat[t.categoryId]=(byCat[t.categoryId]||0)+(+t.amount||0); });
-  const arr=Object.entries(byCat).map(([id,v])=>({c:catById(sp,id)||{name:'?',icon:'❓'},v})).sort((a,b)=>b.v-a.v);
+  mtx.forEach(t=>{ const key=t.categoryId||('_'+(t.name||'Shared')); byCat[key]=(byCat[key]||0)+(+t.amount||0); });
+  const arr=Object.entries(byCat).map(([id,v])=>({c:catById(sp,id)||{name:'Shared',icon:'🤝'},v})).sort((a,b)=>b.v-a.v);
   const totExp=arr.reduce((a,x)=>a+x.v,0)||1;
   h+=`<div class="card"><h3>🧁 ${monthLabel(viewMonth)} — where it went</h3>`;
   if(!arr.length) h+=`<div class="sub">No expenses this month.</div>`;
@@ -950,7 +1050,7 @@ function openAdd(){
   const sp=curSpace();
   if(activeSpace==='shared' && !sp){ setSpace('shared'); return; }
   addDraft={id:null, amount:'', type:'expense', categoryId:null, date:todayStr(), vendor:'', note:'',
-            paidBy:user.uid, splitType:'equal', customMine:''};
+            paidBy:user.uid, splitType:'equal', customMine:'', repeat:'none'};
   renderAddSheet();
 }
 function openEdit(id){
@@ -993,17 +1093,23 @@ function renderAddSheet(isEdit){
   }
 
   html+=`<div class="row2">
-      <div class="field"><label>Date</label><input class="input" type="date" value="${d.date}" onchange="addDraft.date=this.value"></div>
+      <div class="field"><label>${isEdit?'Date':(d.repeat==='none'?'Date':'Starts on')}</label><input class="input" type="date" value="${d.date}" onchange="addDraft.date=this.value"></div>
       <div class="field"><label>${d.type==='income'?'Source':'Store / Vendor'}</label><input class="input" value="${d.vendor}" oninput="addDraft.vendor=this.value" placeholder="Optional"></div>
-    </div>
-    <div class="field"><label>Note</label><input class="input" value="${d.note}" oninput="addDraft.note=this.value" placeholder="Optional"></div>
-    <button class="btn filled block" onclick="saveTx()">${isEdit?'Save changes':'Add '+d.type}</button>`;
+    </div>`;
+  if(!isEdit){
+    html+=`<div class="field"><label>🔁 Repeat</label><div class="chips">
+      ${[['none','One-time'],['weekly','Weekly'],['biweekly','Every 2 weeks'],['monthly','Monthly']].map(([k,lbl])=>`<button class="chip ${d.repeat===k?'active':''}" onclick="setRepeat('${k}')">${lbl}</button>`).join('')}
+    </div>${d.repeat!=='none'?`<div class="sub mt8">Auto-adds this ${FREQ_LABEL[d.repeat].toLowerCase()} from the start date. Manage under Plan → Recurring.</div>`:''}</div>`;
+  }
+  html+=`<div class="field"><label>Note</label><input class="input" value="${d.note}" oninput="addDraft.note=this.value" placeholder="Optional"></div>
+    <button class="btn filled block" onclick="saveTx()">${isEdit?'Save changes':(d.repeat!=='none'?'Add recurring '+d.type:'Add '+d.type)}</button>`;
   openSheetHTML(html);
 }
 function setDraftType(t){ addDraft.type=t; addDraft.categoryId=null; renderAddSheet(!!addDraft.id); }
 function setDraftCat(id){ addDraft.categoryId=id; document.querySelectorAll('#sheet .chips .chip').forEach(()=>{}); renderAddSheet(!!addDraft.id); }
 function setDraftPayer(u){ addDraft.paidBy=u; renderAddSheet(!!addDraft.id); }
 function setSplit(s){ addDraft.splitType=s; renderAddSheet(!!addDraft.id); }
+function setRepeat(r){ addDraft.repeat=r; renderAddSheet(!!addDraft.id); }
 function keyPress(k){
   let a=addDraft.amount||'';
   if(k==='⌫'){ a=a.slice(0,-1); }
@@ -1015,17 +1121,27 @@ function saveTx(){
   const d=addDraft; const amt=parseFloat(d.amount);
   if(!amt||amt<=0){ toast('Enter an amount'); return; }
   if(!d.categoryId){ toast('Pick a category'); return; }
-  const sp=curSpace();
-  const t={id:d.id||uid(), date:d.date, amount:Math.round(amt*100)/100, categoryId:d.categoryId, vendor:d.vendor.trim(), note:d.note.trim(), type:d.type};
+  const sp=curSpace(); const amtR=Math.round(amt*100)/100;
+
+  // Recurring: create a rule (only on a fresh add), then generate occurrences.
+  if(!d.id && d.repeat && d.repeat!=='none'){
+    const rule={id:uid(), freq:d.repeat, anchor:d.date, amount:amtR, categoryId:d.categoryId,
+      vendor:d.vendor.trim(), note:d.note.trim(), type:d.type, active:true, lastGen:null};
+    if(activeSpace==='shared' && d.type==='expense'){ rule.paidBy=d.paidBy; rule.splitType=d.splitType; rule.customMine=d.customMine; }
+    sp.recurring=asArray(sp.recurring); sp.recurring.push(rule);
+    runRecurring(sp); // generates + saves
+    closeSheet(); render();
+    toast('Recurring '+d.type+' added');
+    return;
+  }
+
+  const t={id:d.id||uid(), date:d.date, amount:amtR, categoryId:d.categoryId, vendor:d.vendor.trim(), note:d.note.trim(), type:d.type};
   if(activeSpace==='shared' && d.type==='expense'){
     t.paidBy=d.paidBy;
-    const mem=Object.keys(sp.members||{}); const other=mem.find(m=>m!==d.paidBy);
-    if(d.splitType==='equal'){ const half=Math.round(amt/2*100)/100; t.split={type:'equal',shares:{[d.paidBy]:amt-half,[other]:half}}; }
-    else if(d.splitType==='full'){ t.split={type:'full',shares:{[d.paidBy]:amt,[other]:0}}; }
-    else { const mine=parseFloat(d.customMine)||0; const theirs=Math.round((amt-mine)*100)/100; t.split={type:'custom',shares:{[user.uid]:mine,[other]:theirs}}; }
+    t.split=computeSplit(sp,amtR,d.paidBy,d.splitType,d.customMine);
   }
   sp.transactions=asArray(sp.transactions);
-  if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0) sp.transactions[i]=t; }
+  if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0){ t.recurringId=sp.transactions[i].recurringId; t.occ=sp.transactions[i].occ; sp.transactions[i]=t; } }
   else sp.transactions.push(t);
   saveSpace(activeSpace); closeSheet(); render();
   toast(d.id?'Updated':'Added '+fmt(amt));
