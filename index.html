@@ -422,6 +422,7 @@ function blankSpace(){
    ===================================================================== */
 window.addEventListener('DOMContentLoaded', ()=>{
   initTheme();
+  initSheetGesture();
   if(TEST_MODE){ bootTestMode(); }
   else { bootFirebase(); }
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
@@ -1352,8 +1353,54 @@ function doSignOut(){ if(auth) auth.signOut(); closeSheet(); }
 /* =====================================================================
    SHEET plumbing
    ===================================================================== */
-function openSheetHTML(html){ document.getElementById('sheet').innerHTML=html; document.getElementById('sheet').classList.add('show'); document.getElementById('scrim').classList.add('show'); }
-function closeSheet(){ document.getElementById('sheet').classList.remove('show'); document.getElementById('scrim').classList.remove('show'); }
+function openSheetHTML(html){ const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.scrollTop=0; s.innerHTML=html; s.classList.add('show'); document.getElementById('scrim').classList.add('show'); }
+function closeSheet(){ const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.classList.remove('show'); const sc=document.getElementById('scrim'); sc.style.opacity=''; sc.classList.remove('show'); }
+
+/* Drag-to-dismiss for the bottom sheet (mobile). The sheet follows your finger
+   as you drag down and only closes past a threshold — otherwise it snaps back,
+   so a small accidental swipe won't dismiss it. */
+function initSheetGesture(){
+  const sheet=document.getElementById('sheet'); const scrim=document.getElementById('scrim');
+  if(!sheet) return;
+  const DISMISS=110;            // px dragged before it closes
+  let startY=0, curY=0, candidate=false, dragging=false;
+  const start=(y,target)=>{
+    dragging=false;
+    // start a drag only from the grabber/header, or when the sheet is scrolled to the top
+    const fromHandle = target && target.closest && target.closest('.grabber, h2, .between, .type-toggle');
+    candidate = !!fromHandle || sheet.scrollTop<=0;
+    startY=y; curY=y;
+  };
+  const move=(y,ev)=>{
+    if(!candidate) return;
+    const dy=y-startY;
+    if(!dragging){
+      if(dy>6){ dragging=true; sheet.style.transition='none'; }   // downward intent -> begin drag
+      else if(dy<-2){ candidate=false; return; }                  // moving up -> let content scroll
+      else return;
+    }
+    curY=y;
+    if(dy<=0){ sheet.style.transform='translateY(0)'; if(scrim) scrim.style.opacity=''; return; }
+    if(ev && ev.cancelable) ev.preventDefault();                  // stop content scrolling while dragging
+    sheet.style.transform='translateY('+dy+'px)';
+    const h=sheet.offsetHeight||600;
+    if(scrim) scrim.style.opacity=String(Math.max(0,1-dy/h));
+  };
+  const end=()=>{
+    if(!candidate) return;
+    candidate=false;
+    const dy=curY-startY;
+    sheet.style.transition='';                                    // restore the CSS ease
+    if(scrim) scrim.style.opacity='';
+    sheet.style.transform='';                                     // back to the .show position (or out, if closing)
+    if(dragging && dy>DISMISS) closeSheet();
+    dragging=false;
+  };
+  sheet.addEventListener('touchstart', e=>start(e.touches[0].clientY, e.target), {passive:true});
+  sheet.addEventListener('touchmove',  e=>move(e.touches[0].clientY, e), {passive:false});
+  sheet.addEventListener('touchend',   end);
+  sheet.addEventListener('touchcancel',end);
+}
 </script>
 </body>
 </html>
