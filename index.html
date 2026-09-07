@@ -1183,6 +1183,7 @@ function viewPlan(){
       <div class="ic">${c.icon||'•'}</div>
       <div class="mid"><div class="t1">${c.name} ${r.active===false?'<span class="tag">paused</span>':''}</div>
         <div class="t2">${r.type==='income'?'+':'-'}${fmt(r.amount)} · ${FREQ_LABEL[r.freq]||r.freq}${r.vendor?' · '+r.vendor:''}</div></div>
+      <button class="icon-btn" onclick="openEditRecurring('${r.id}')" title="Edit">✏️</button>
       <button class="icon-btn" onclick="toggleRecurring('${r.id}')" title="${r.active===false?'Resume':'Pause'}">${r.active===false?'▶️':'⏸️'}</button>
       <button class="icon-btn" onclick="deleteRecurring('${r.id}')" title="Delete">🗑️</button>
     </div>`;
@@ -1346,14 +1347,25 @@ function openEdit(id){
             customPct:(t.split&&t.split.pct!=null)?String(t.split.pct):'', repeat:'none'};
   renderAddSheet(true);
 }
+function openEditRecurring(id){
+  const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id); if(!r) return;
+  addDraft={id:null, recId:r.id, space:activeSpace, amount:String(r.amount), type:r.type, categoryId:r.categoryId,
+            date:r.anchor, vendor:r.vendor||'', note:r.note||'',
+            paidBy:r.paidBy||user.uid, splitType:r.splitType||'equal',
+            customMine:(r.customMine!=null?String(r.customMine):''), customPct:(r.customPct!=null?String(r.customPct):''),
+            repeat:r.freq};
+  renderAddSheet();
+}
 function draftSpace(){ return addDraft.space==='shared'?data.shared:data.personal; }
-function renderAddSheet(isEdit){
+function renderAddSheet(){
   const d=addDraft;
+  const isRec = !!d.recId;             // editing a recurring RULE (not a single entry)
+  const isEdit = !isRec && !!d.id;     // editing an existing transaction
   // Preserve scroll when re-rendering an already-open sheet (e.g. tapping a toggle),
   // so the view doesn't jump back to the top.
   const _sheetEl=document.getElementById('sheet');
   const _keepScroll = (_sheetEl && _sheetEl.classList.contains('show')) ? _sheetEl.scrollTop : 0;
-  if(d.type==='income') d.space=isEdit?d.space:activeSpace;  // income follows the space you're in
+  if(d.type==='income') d.space=(isEdit||isRec)?d.space:activeSpace;  // income follows the space you're in
   const sp=draftSpace();
   // Category picker ordered by how often each category has been used (most-used first),
   // ties broken by the category's original order.
@@ -1365,14 +1377,14 @@ function renderAddSheet(isEdit){
   const shared=d.space==='shared';
   let members = shared? Object.entries((sp&&sp.members)||{}).map(([uidx,m])=>({uid:uidx,name:m.name||'?'})):[];
   let html=`<div class="grabber"></div>
-    <div class="between"><h2 style="margin:0">${isEdit?'Edit':'Add'} ${d.type}</h2>
+    <div class="between"><h2 style="margin:0">${isRec?'Edit recurring':(isEdit?'Edit':'Add')} ${d.type}</h2>
       ${isEdit?`<button class="icon-btn" onclick="deleteTx('${d.id}')" title="Delete">🗑️</button>`:''}</div>
     <div class="type-toggle">
       <button class="exp ${d.type==='expense'?'active':''}" onclick="setDraftType('expense')">Expense</button>
       <button class="inc ${d.type==='income'?'active':''}" onclick="setDraftType('income')">Income</button>
     </div>`;
-  // Personal / Shared chooser — expenses only, on add (edits stay in their space)
-  if(d.type==='expense' && !isEdit){
+  // Personal / Shared chooser — expenses only, on add (edits & recurring-rule edits stay in their space)
+  if(d.type==='expense' && !isEdit && !isRec){
     html+=`<div class="field" style="margin-top:8px"><label>Add to</label><div class="chips">
       <button class="chip ${d.space==='personal'?'active':''}" onclick="setDraftSpace('personal')">👤 Personal</button>
       <button class="chip ${d.space==='shared'?'active':''}" onclick="setDraftSpace('shared')">🤝 Shared</button>
@@ -1409,16 +1421,20 @@ function renderAddSheet(isEdit){
   }
 
   html+=`<div class="row2">
-      <div class="field"><label>${isEdit?'Date':(d.repeat==='none'?'Date':'Starts on')}</label><input class="input" type="date" value="${d.date}" onchange="addDraft.date=this.value"></div>
-      <div class="field"><label>${d.type==='income'?'Source':'Store / Vendor *'}</label><input class="input" value="${d.vendor}" oninput="addDraft.vendor=this.value" placeholder="${d.type==='income'?'Optional':'Required'}"></div>
+      <div class="field"><label>${isRec?'Starts on':(isEdit?'Date':(d.repeat==='none'?'Date':'Starts on'))}</label><input class="input" type="date" value="${d.date}" onchange="addDraft.date=this.value"></div>
+      <div class="field"><label>${d.type==='income'?'Source':'Store / Vendor'+(isRec?'':' *')}</label><input class="input" value="${d.vendor}" oninput="addDraft.vendor=this.value" placeholder="${d.type==='income'?'Optional':'Required'}"></div>
     </div>`;
-  if(!isEdit){
+  if(isRec){
+    html+=`<div class="field"><label>🔁 Repeat</label><div class="chips">
+      ${[['weekly','Weekly'],['biweekly','Every 2 weeks'],['monthly','Monthly'],['yearly','Yearly']].map(([k,lbl])=>`<button class="chip ${d.repeat===k?'active':''}" onclick="setRepeat('${k}')">${lbl}</button>`).join('')}
+    </div><div class="sub mt8">Applies to future auto-adds. Entries already added stay as they are.</div></div>`;
+  } else if(!isEdit){
     html+=`<div class="field"><label>🔁 Repeat</label><div class="chips">
       ${[['none','One-time'],['weekly','Weekly'],['biweekly','Every 2 weeks'],['monthly','Monthly'],['yearly','Yearly']].map(([k,lbl])=>`<button class="chip ${d.repeat===k?'active':''}" onclick="setRepeat('${k}')">${lbl}</button>`).join('')}
     </div>${d.repeat!=='none'?`<div class="sub mt8">Auto-adds this ${FREQ_LABEL[d.repeat].toLowerCase()} from the start date. Manage under Plan → Recurring.</div>`:''}</div>`;
   }
   html+=`<div class="field"><label>Note</label><input class="input" value="${d.note}" oninput="addDraft.note=this.value" placeholder="Optional"></div>
-    <button class="btn filled block" onclick="saveTx()">${isEdit?'Save changes':(d.repeat!=='none'?'Add recurring '+d.type:'Add '+d.type)}</button>`;
+    <button class="btn filled block" onclick="saveTx()">${isRec?'Save recurring changes':(isEdit?'Save changes':(d.repeat!=='none'?'Add recurring '+d.type:'Add '+d.type))}</button>`;
   openSheetHTML(html);
   renderAmt();
   if(_keepScroll){ const s=document.getElementById('sheet'); if(s) s.scrollTop=_keepScroll; }
@@ -1541,12 +1557,29 @@ function saveTx(){
   const d=addDraft; const amt=evalExpr(d.amount);
   if(!isFinite(amt)||amt<=0){ toast('Enter a valid amount'); return; }
   if(!d.categoryId){ toast('Pick a category'); return; }
-  if(!d.id && d.type==='expense' && !(d.vendor||'').trim()){ toast('Add a store / vendor'); return; }  // required on new adds only, not edits
+  if(!d.id && !d.recId && d.type==='expense' && !(d.vendor||'').trim()){ toast('Add a store / vendor'); return; }  // required on new adds only, not edits
   if(d._saving) return;                 // guard: ignore a second Save tap on the same entry
   d._saving=true;
   const sp=draftSpace(); const amtR=Math.round(amt*100)/100;
   const isSharedExp = d.space==='shared' && d.type==='expense';
   closeSheet();                         // close now so there is nothing left to double-tap
+
+  // Recurring: edit an existing rule (from Plan → Recurring). Future auto-adds follow the new
+  // schedule; entries already generated are left untouched.
+  if(d.recId){
+    const rule=asArray(sp.recurring).find(x=>x.id===d.recId);
+    if(rule){
+      rule.freq=d.repeat; rule.anchor=d.date; rule.amount=amtR; rule.categoryId=d.categoryId;
+      rule.vendor=d.vendor.trim(); rule.note=d.note.trim(); rule.type=d.type;
+      if(isSharedExp){ rule.paidBy=d.paidBy; rule.splitType=d.splitType; rule.customMine=d.customMine; rule.customPct=d.customPct; }
+      else { delete rule.paidBy; delete rule.splitType; delete rule.customMine; delete rule.customPct; }
+      runRecurring(sp);      // catch up any newly-due occurrences under the updated schedule (also saves)
+      saveSpace(d.space);
+      render();
+      toast('Recurring updated');
+    }
+    return;
+  }
 
   // Recurring: create a rule (only on a fresh add), then generate occurrences.
   if(!d.id && d.repeat && d.repeat!=='none'){
