@@ -81,6 +81,22 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .topbar .spacer{flex:1}
 .icon-btn{width:44px;height:44px;border-radius:var(--r-full);display:grid;place-items:center;font-size:1.3rem;color:var(--on-surface-variant)}
 .icon-btn:active{background:var(--surface-container-high)}
+.save-dot{height:26px;min-width:26px;padding:0 8px;border-radius:var(--r-full);display:inline-flex;align-items:center;gap:5px;font-size:.72rem;font-weight:600;border:none;cursor:pointer;background:var(--surface-container-high);color:var(--on-surface-variant);transition:.2s}
+.save-dot::before{content:'';width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}
+.save-dot.idle{opacity:.55}
+.save-dot.idle::after,.save-dot.saved::after{content:'Saved'}
+.save-dot.saving{color:#8a6d00;background:rgba(226,183,20,.16)}
+.save-dot.saving::after{content:'Saving…'}
+.save-dot.saved{color:var(--primary);background:rgba(58,107,79,.14)}
+.save-dot.offline{color:#7a4f18;background:rgba(196,120,32,.16)}
+.save-dot.offline::after{content:'Offline'}
+.save-dot.error{color:#b3261e;background:rgba(179,38,30,.14)}
+.save-dot.error::after{content:'Not saved'}
+.save-dot.saving::before{animation:pulseDot 1s infinite}
+@keyframes pulseDot{0%,100%{opacity:.4}50%{opacity:1}}
+.bk-row{display:flex;align-items:center;gap:10px;padding:12px 4px;border-bottom:1px solid var(--outline-variant)}
+.bk-row .bk-main{flex:1;min-width:0}
+.bk-tag{font-size:.66rem;font-weight:600;padding:2px 7px;border-radius:var(--r-full);background:var(--surface-container-high);color:var(--on-surface-variant)}
 
 /* ---------- Segmented space toggle ---------- */
 .segmented{display:flex;background:var(--surface-container);border-radius:var(--r-full);padding:4px;margin:4px 16px 12px;gap:4px}
@@ -306,6 +322,7 @@ h1,h2,h3,h4{margin:0;font-weight:600}
   <div class="topbar">
     <div class="title"><span class="logo">🪺</span> Nest</div>
     <div class="spacer"></div>
+    <button class="save-dot idle" id="saveDot" onclick="openBackups()" title="Save status — tap for backups &amp; restore"></button>
     <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Theme">🌙</button>
     <button class="icon-btn" onclick="openSheet('settings')" title="Settings">⚙️</button>
   </div>
@@ -414,6 +431,11 @@ let viewMonth = ymKey(new Date());  // "YYYY-MM"
 let data = { personal:blankSpace(), shared:null };  // shared null until joined
 let addDraft = null;
 let unsub = [];
+let isOnline = true;                 // driven by Firebase .info/connected
+let saveState = 'idle';              // idle | saving | saved | offline | error
+let _rulesHinted = false;            // only nag once about backup rules
+const BACKUP_KEEP_CLOUD = 30;        // daily cloud snapshots retained
+const BACKUP_KEEP_LOCAL = 7;         // on-device snapshots retained
 
 function blankSpace(){
   return { categories:[], transactions:[], recurring:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
@@ -487,6 +509,7 @@ function signInError(e){
 function bootFirebase(){
   firebase.initializeApp(firebaseConfig);
   auth = firebase.auth(); db = firebase.database();
+  watchConnection();
   try{ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
   document.getElementById('signin').classList.remove('hidden');
   auth.getRedirectResult().catch(e=>signInError(e));
@@ -524,10 +547,17 @@ function doSignIn(){
 function attachPersonal(){
   db.ref('personal/'+user.uid).on('value',snap=>{
     const v=snap.val();
-    data.personal = v?normalizeSpace(v):seedFirstTime('personal');
-    if(!v){ db.ref('personal/'+user.uid).set(stripForSave(data.personal)); }
+    if(v){ data.personal=normalizeSpace(v); }
+    else {
+      // Cloud is empty. Before seeding a blank budget (which would overwrite the cloud),
+      // check for an on-device copy — if one exists, the cloud was likely wiped: recover it.
+      const m=readMirror('personal');
+      if(m){ data.personal=normalizeSpace(m.sp); saveSpace('personal'); toast('⚠️ Cloud was empty — recovered your budget from this device’s backup'); }
+      else { data.personal=seedFirstTime('personal'); db.ref('personal/'+user.uid).set(stripForSave(data.personal)); }
+    }
     runRecurring(data.personal);
     if(!TEST_MODE) render();
+    maybeBackup('personal');
   }, err=>{
     if(err && err.code==='PERMISSION_DENIED') toast('Database rules not set yet — publish the security rules in Firebase.');
   });
@@ -540,6 +570,7 @@ function attachShared(sid){
     data.shared && (data.shared.id=sid);
     runRecurring(data.shared);
     render();
+    if(data.shared) maybeBackup('shared');
   });
 }
 async function attachSharedIfMember(){
@@ -551,20 +582,162 @@ function seedFirstTime(which){
 }
 
 /* =====================================================================
-   PERSISTENCE
+   PERSISTENCE  (honest save status + device mirror + cloud/local backups)
    ===================================================================== */
+function setSaveState(s){
+  saveState=s;
+  const el=document.getElementById('saveDot'); if(!el) return;
+  el.className='save-dot '+s;
+  el.title={ idle:'All changes saved', saving:'Saving to the cloud…', saved:'All changes saved to the cloud',
+    offline:'Offline — your changes are kept on this device and sync when you reconnect',
+    error:'Couldn’t save to the cloud — a copy is kept on this device. Tap to back up / restore.'
+  }[s]||'';
+}
+function idPartFor(which){ const sp=which==='shared'?data.shared:data.personal; return which==='shared'?(sp&&sp.id):(user&&user.uid); }
+function mirrorKey(which){ return 'nest_mirror_'+which+'_'+idPartFor(which); }
+function writeMirror(which,sp){ try{ lsSet(mirrorKey(which), JSON.stringify({sp:stripForSave(sp), at:Date.now()})); }catch(e){} }
+function readMirror(which){ try{ const m=JSON.parse(lsGet(mirrorKey(which))||'null'); return (m&&m.sp&&(asArray(m.sp.transactions).length||asArray(m.sp.categories).length))?m:null; }catch(e){ return null; } }
+
 function saveSpace(which){
   const sp = which==='personal'?data.personal:data.shared;
-  if(!sp) return;
+  if(!sp) return Promise.resolve();
   if(TEST_MODE){
     if(which==='personal') lsSet('nest_personal_'+user.uid, JSON.stringify(sp));
     else lsSet('nest_shared', JSON.stringify(sp));
-  } else {
-    const path = which==='personal' ? 'personal/'+user.uid : 'shared/'+sp.id;
-    db.ref(path).set(stripForSave(sp));
+    return Promise.resolve();
   }
+  // 1) device-side safety net FIRST — survives a failed or offline cloud write
+  writeMirror(which, sp);
+  // 2) cloud write with honest status
+  const path = which==='personal' ? 'personal/'+user.uid : 'shared/'+sp.id;
+  setSaveState(isOnline?'saving':'offline');
+  return db.ref(path).set(stripForSave(sp))
+    .then(()=>{ setSaveState('saved'); maybeBackup(which); })
+    .catch(err=>{
+      setSaveState('error');
+      console.warn('Nest save failed', err);
+      toast('⚠️ Couldn’t save to the cloud — a copy is safe on this device'+((err&&err.code==='PERMISSION_DENIED')?' (check Firebase rules)':''));
+    });
 }
 function stripForSave(sp){ const c={...sp}; delete c.id; return c; }
+
+/* ---- connection awareness ---- */
+function watchConnection(){
+  try{
+    db.ref('.info/connected').on('value',s=>{
+      isOnline=!!s.val();
+      if(!isOnline){ if(saveState!=='error') setSaveState('offline'); }
+      else if(saveState==='offline'){ setSaveState('saved'); }
+    });
+  }catch(e){}
+}
+
+/* ---- BACKUPS ------------------------------------------------------- */
+function nowStamp(){ const d=new Date(); const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()); }
+function backupBase(which){ const idp=idPartFor(which); return 'backups/'+user.uid+'/'+(which==='shared'?'shared_'+idp:'personal'); }
+function localBkKey(which){ return 'nest_localbk_'+which+'_'+idPartFor(which); }
+
+function maybeBackup(which){                 // one automatic snapshot per calendar day
+  if(!user) return;
+  const sp=which==='shared'?data.shared:data.personal; if(!sp) return;
+  const today=todayStr(); const flag='nest_lastbackup_'+which+'_'+idPartFor(which);
+  if(lsGet(flag)===today) return;
+  lsSet(flag, today);
+  writeBackup(which, today, 'auto');
+}
+function backupNow(which,label){             // forced snapshot (manual / before a restore)
+  if(!user) return;
+  const sp=which==='shared'?data.shared:data.personal; if(!sp){ toast('Nothing to back up'); return; }
+  writeBackup(which, nowStamp(), label||'manual');
+}
+function writeBackup(which, key, label){
+  const sp=which==='shared'?data.shared:data.personal; if(!sp) return;
+  const snap={ data:stripForSave(sp), at:Date.now(), day:key, label:label||'auto', txCount:asArray(sp.transactions).length };
+  // local (always works, no rules needed)
+  let arr=[]; try{ arr=JSON.parse(lsGet(localBkKey(which))||'[]'); }catch(e){}
+  arr=arr.filter(b=>b.day!==key); arr.push(snap); arr.sort((a,b)=>a.at-b.at);
+  while(arr.length>BACKUP_KEEP_LOCAL) arr.shift();
+  lsSet(localBkKey(which), JSON.stringify(arr));
+  if(TEST_MODE || !db) return;               // local-only in test / before Firebase is ready
+  // cloud (best-effort; needs the backups rule)
+  const base=backupBase(which);
+  db.ref(base+'/'+key).set(snap)
+    .then(()=>pruneCloudBackups(base))
+    .catch(err=>{ if(err&&err.code==='PERMISSION_DENIED') hintBackupRules(); });
+}
+function pruneCloudBackups(base){
+  db.ref(base).get().then(s=>{ const v=s.val()||{}; const keys=Object.keys(v).sort();
+    while(keys.length>BACKUP_KEEP_CLOUD){ const k=keys.shift(); db.ref(base+'/'+k).remove().catch(()=>{}); }
+  }).catch(()=>{});
+}
+function hintBackupRules(){ if(_rulesHinted) return; _rulesHinted=true;
+  toast('☁️ On-device backups are on. To enable cloud backups too, add the “backups” rule in Firebase.'); }
+function listLocalBackups(which){ try{ return JSON.parse(lsGet(localBkKey(which))||'[]'); }catch(e){ return []; } }
+
+function bkLabel(day){
+  const m=String(day).match(/^(\d{4})-(\d{2})-(\d{2})(?:_(\d{2})(\d{2})(\d{2}))?$/);
+  if(!m) return day;
+  const dt=new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0));
+  return m[4]!=null ? dt.toLocaleString('en-CA',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})
+                    : dt.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
+}
+function openBackups(){
+  const which = (activeSpace==='shared' && data.shared) ? 'shared' : 'personal';
+  if(TEST_MODE){ openSheetHTML(sheetBackupsHTML(which, [], listLocalBackups(which), 'test')); return; }
+  openSheetHTML(sheetBackupsHTML(which, null, listLocalBackups(which), false)); // cloud null = loading
+  db.ref(backupBase(which)).get().then(s=>{
+    const v=s.val()||{};
+    const cloud=Object.keys(v).map(k=>({...v[k], day:v[k].day||k, _src:'cloud'})).sort((a,b)=>b.at-a.at);
+    if(document.getElementById('bkSheet')) openSheetHTML(sheetBackupsHTML(which, cloud, listLocalBackups(which), false));
+  }).catch(err=>{
+    const st = (err&&err.code==='PERMISSION_DENIED')?'denied':'error';
+    if(document.getElementById('bkSheet')) openSheetHTML(sheetBackupsHTML(which, [], listLocalBackups(which), st));
+  });
+}
+function sheetBackupsHTML(which, cloud, local, state){
+  const spName = which==='shared'?'🤝 Shared':'🧍 Personal';
+  const statusLine = (saveState==='saved'||saveState==='idle')?'✓ Your latest changes are saved to the cloud.'
+    : saveState==='saving'?'⏳ Saving…'
+    : saveState==='offline'?'📴 Offline — changes are kept on this device and sync when you reconnect.'
+    : '⚠️ Last cloud save failed — a copy is safe on this device.';
+  let h=`<div id="bkSheet" class="grabber"></div>
+    <div class="between"><h2 style="margin:0">🛟 Backups &amp; restore</h2>
+      <button class="btn text" onclick="backupNow('${which}','manual');toast('Backup saved');setTimeout(openBackups,350)">＋ Back up now</button></div>
+    <p class="muted" style="margin:2px 0 8px">Snapshots of your <b>${spName}</b> budget — one saves automatically each day and on this device. Roll back to any of them if something goes wrong.</p>
+    <div class="sub" style="margin-bottom:10px">${statusLine}</div>`;
+  if(state==='denied') h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)"><b>☁️ Cloud backups need a one-time setup</b><div class="sub mt8">On-device backups already work. To also keep backups in the cloud, add the <code>backups</code> security rule in your Firebase console.</div></div>`;
+  const byDay={};
+  (cloud||[]).forEach(b=>{ byDay[b.day]={...b,src:'cloud'}; });
+  (local||[]).forEach(b=>{ if(byDay[b.day]) byDay[b.day].src='both'; else byDay[b.day]={...b,src:'local'}; });
+  const rows=Object.values(byDay).sort((a,b)=>b.at-a.at);
+  if(cloud===null) h+=`<div class="sub" style="padding:14px 0;text-align:center">Loading cloud backups…</div>`;
+  else if(!rows.length) h+=`<div class="empty"><div class="em">🗂️</div>No backups yet.<br>Your first snapshot saves automatically after your next change.</div>`;
+  rows.forEach(b=>{
+    const tag=b.src==='both'?'☁️+📱':b.src==='cloud'?'☁️ Cloud':'📱 Device';
+    const lbl=b.label==='before-restore'?' · pre-restore':(b.label==='manual'?' · manual':'');
+    h+=`<div class="bk-row"><div class="bk-main"><div style="font-weight:600">${bkLabel(b.day)}</div>
+      <div class="sub">${b.txCount||0} entries${lbl}</div></div>
+      <span class="bk-tag">${tag}</span>
+      <button class="btn outline" style="padding:6px 14px;flex:none" onclick="restoreBackup('${which}','${b.src}','${b.day}')">Restore</button></div>`;
+  });
+  return h;
+}
+function restoreBackup(which, src, day){
+  const apply=(snap)=>{
+    if(!snap||!snap.data){ toast('That backup looks empty'); return; }
+    const cur=which==='shared'?data.shared:data.personal;
+    const curN=asArray(cur&&cur.transactions).length;
+    if(!confirm(`Restore the ${bkLabel(day)} backup?\n\nThis replaces your current ${which==='shared'?'Shared':'Personal'} data (${curN} entries) with that snapshot (${snap.txCount||0} entries).\n\nYour current data is backed up first, so you can undo this.`)) return;
+    backupNow(which,'before-restore');                 // safety net so a restore is itself reversible
+    const restored=normalizeSpace(snap.data);
+    if(which==='shared'){ restored.id = (data.shared&&data.shared.id) || idPartFor('shared'); data.shared=restored; }
+    else data.personal=restored;
+    saveSpace(which); closeSheet(); render(); toast('Restored the '+bkLabel(day)+' backup');
+  };
+  if((src==='local'||src==='both')){ const b=listLocalBackups(which).find(x=>x.day===day); if(b){ apply(b); return; } }
+  db.ref(backupBase(which)+'/'+day).get().then(s=>apply(s.val())).catch(()=>toast('Couldn’t load that backup'));
+}
 
 /* normalize: guard against Firebase dropping empty arrays/objects */
 function normalizeSpace(sp){
@@ -1292,6 +1465,7 @@ function sheetSettings(){
   </div>`;
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>Data</h3>
+    <button class="btn outline block mb8" onclick="closeSheet();openBackups()">🛟 Backups &amp; restore</button>
     <button class="btn outline block mb8" onclick="exportData()">⬇️ Export backup (JSON)</button>
     ${TEST_MODE?`<button class="btn danger block" onclick="resetTest()">Reset test data</button>`:`<button class="btn danger block" onclick="doSignOut()">Sign out</button>`}
   </div>`;
