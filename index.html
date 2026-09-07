@@ -384,7 +384,7 @@ let addDraft = null;
 let unsub = [];
 
 function blankSpace(){
-  return { categories:[], transactions:[], settings:{savingsGoal:0, annualIncome:0}, members:{}, settlements:[], inviteCode:null };
+  return { categories:[], transactions:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
 }
 
 /* =====================================================================
@@ -622,7 +622,7 @@ function monthsSpan(sp){ // list of last 6 month keys
   return out;
 }
 function catSpentMonth(sp,catId,ym){ return monthTx(sp,ym).filter(t=>t.categoryId===catId&&t.type==='expense').reduce((a,t)=>a+(+t.amount||0),0); }
-function monthlySalary(sp){ return (+(sp.settings&&sp.settings.annualIncome)||0)/12; }
+function monthlySalary(sp){ return (+(sp.settings&&sp.settings.paycheck)||0)*26/12; } // bi-weekly paycheck × 26 / 12
 function incomeBasis(sp,ym){ // salary if set, else this month's income, fallback to 3-mo avg
   const sal=monthlySalary(sp); if(sal>0) return sal;
   const im=sumBy(monthTx(sp,ym),'income'); if(im>0) return im;
@@ -788,16 +788,16 @@ function paidByName(sp,t){ if(!t.paidBy) return ''; if(t.paidBy===user.uid) retu
 function viewPlan(){
   const sp=curSpace();
   const mo=monthlySalary(sp);
-  const annual=+(sp.settings&&sp.settings.annualIncome)||0;
+  const pay=+(sp.settings&&sp.settings.paycheck)||0;
   let h='';
 
   // income basis
   h+=`<div class="card"><h3>💵 Your income</h3>
-    <div class="field"><label>Yearly take-home pay (after tax)</label>
+    <div class="field"><label>Paycheck (take-home, every 2 weeks)</label>
       <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
-      <input class="input" type="number" inputmode="decimal" value="${annual||''}" placeholder="e.g. 60000"
-        onchange="setAnnualIncome(this.value)"></div></div>
-    ${mo>0?`<div class="sub">≈ <b>${fmt0(mo)}</b> / month. Powers the recommendations below and any % budgets.</div>`
+      <input class="input" type="number" inputmode="decimal" value="${pay||''}" placeholder="e.g. 1800"
+        onchange="setPaycheck(this.value)"></div></div>
+    ${mo>0?`<div class="sub">≈ <b>${fmt0(mo)}</b> / month (paycheck × 26 ÷ 12). Powers the recommendations below and any % budgets.</div>`
           :`<div class="sub">Add this to unlock recommended budgets based on the 50 / 30 / 20 guideline.</div>`}
   </div>`;
 
@@ -843,7 +843,7 @@ function viewPlan(){
   h+=`<button class="btn text" onclick="openSheet('managecats')">✏️ Manage categories & groups</button></div>`;
   return h;
 }
-function setAnnualIncome(v){ curSpace().settings.annualIncome=+v||0; saveSpace(activeSpace); render(); toast('Income updated'); }
+function setPaycheck(v){ curSpace().settings.paycheck=+v||0; saveSpace(activeSpace); render(); toast('Income updated'); }
 function applyRecSavings(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0)return; sp.settings.savingsGoal=Math.round(mo*REC_SAVINGS_PCT/100); saveSpace(activeSpace); render(); toast('Recommended savings applied'); }
 function applyRec(id){ const sp=curSpace(); const mo=monthlySalary(sp); const c=catById(sp,id); if(!c||mo<=0||REC_PCT[c.name]==null)return; c.useIncomePct=false; c.target=Math.round(mo*REC_PCT[c.name]/100); saveSpace(activeSpace); render(); toast(c.name+' set to recommended'); }
 function applyAllRec(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0){toast('Add your income first');return;} (sp.categories||[]).filter(c=>c.type==='expense'&&REC_PCT[c.name]!=null).forEach(c=>{ c.useIncomePct=false; c.target=Math.round(mo*REC_PCT[c.name]/100); }); sp.settings.savingsGoal=Math.round(mo*REC_SAVINGS_PCT/100); saveSpace(activeSpace); render(); toast('All recommendations applied'); }
@@ -1083,14 +1083,14 @@ function sheetSettings(){
       <div class="sub mt8">Members: ${Object.values(data.shared.members||{}).map(m=>m.name).join(', ')}</div>
     </div>`;
   }
-  const annual=+(sp.settings&&sp.settings.annualIncome)||0;
+  const pay=+(sp.settings&&sp.settings.paycheck)||0; const payMo=pay*26/12;
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>💵 Income (${activeSpace==='shared'?'shared':'personal'})</h3>
-    <div class="field"><label>Yearly take-home pay (after tax)</label>
+    <div class="field"><label>Paycheck (take-home, every 2 weeks)</label>
       <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
-      <input class="input" type="number" inputmode="decimal" value="${annual||''}" placeholder="e.g. 60000"
-        onchange="setAnnualIncome(this.value);openSheet('settings')"></div></div>
-    <div class="sub">${annual>0?`≈ ${fmt0(annual/12)}/mo. `:''}Used for recommended budgets in Plan.</div>
+      <input class="input" type="number" inputmode="decimal" value="${pay||''}" placeholder="e.g. 1800"
+        onchange="setPaycheck(this.value);openSheet('settings')"></div></div>
+    <div class="sub">${pay>0?`≈ ${fmt0(payMo)}/mo. `:''}Used for recommended budgets in Plan.</div>
   </div>`;
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>Appearance</h3>
