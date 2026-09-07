@@ -333,6 +333,16 @@ const CUR_SYMBOL = "$";
 const CUR_CODE = "CAD";
 const GROUPS = {need:"Needs", want:"Wants", savings:"Savings"};
 
+/* Recommended spend as % of monthly take-home income, keyed by default category name.
+   Needs sum ≈ 50, Wants ≈ 30, Savings 20 — the 50/30/20 guideline. */
+const REC_PCT = {
+  "Rent / Housing":25, "Groceries":8, "Utilities":4, "Wifi":1, "Cell Phone":1.5,
+  "Insurance":4, "Gas":3, "Public Transit":1.5, "Health / Medical":1.5, "Home":0.5,
+  "Restaurant":5, "Coffee":1, "Date Activities":2, "Going Out":2, "Entertainment":2,
+  "Streaming":1.5, "Shopping":4, "Clothing":3, "Gym":2, "Gifts":2, "Travel":3.5, "Other":2
+};
+const REC_SAVINGS_PCT = 20;
+
 const DEFAULT_EXPENSE_CATS = [
   {name:"Groceries", icon:"🛒", group:"need"},
   {name:"Rent / Housing", icon:"🏠", group:"need"},
@@ -374,7 +384,7 @@ let addDraft = null;
 let unsub = [];
 
 function blankSpace(){
-  return { categories:[], transactions:[], settings:{savingsGoal:0}, members:{}, settlements:[], inviteCode:null };
+  return { categories:[], transactions:[], settings:{savingsGoal:0, annualIncome:0}, members:{}, settlements:[], inviteCode:null };
 }
 
 /* =====================================================================
@@ -612,7 +622,9 @@ function monthsSpan(sp){ // list of last 6 month keys
   return out;
 }
 function catSpentMonth(sp,catId,ym){ return monthTx(sp,ym).filter(t=>t.categoryId===catId&&t.type==='expense').reduce((a,t)=>a+(+t.amount||0),0); }
-function incomeBasis(sp,ym){ // this month's income, fallback to 3-mo avg
+function monthlySalary(sp){ return (+(sp.settings&&sp.settings.annualIncome)||0)/12; }
+function incomeBasis(sp,ym){ // salary if set, else this month's income, fallback to 3-mo avg
+  const sal=monthlySalary(sp); if(sal>0) return sal;
   const im=sumBy(monthTx(sp,ym),'income'); if(im>0) return im;
   let tot=0,n=0; const now=parseYM(ym);
   for(let i=1;i<=3;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1); tot+=sumBy(monthTx(sp,ymKey(d)),'income'); n++; }
@@ -775,21 +787,40 @@ function paidByName(sp,t){ if(!t.paidBy) return ''; if(t.paidBy===user.uid) retu
    ===================================================================== */
 function viewPlan(){
   const sp=curSpace();
+  const mo=monthlySalary(sp);
+  const annual=+(sp.settings&&sp.settings.annualIncome)||0;
   let h='';
+
+  // income basis
+  h+=`<div class="card"><h3>💵 Your income</h3>
+    <div class="field"><label>Yearly take-home pay (after tax)</label>
+      <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
+      <input class="input" type="number" inputmode="decimal" value="${annual||''}" placeholder="e.g. 60000"
+        onchange="setAnnualIncome(this.value)"></div></div>
+    ${mo>0?`<div class="sub">≈ <b>${fmt0(mo)}</b> / month. Powers the recommendations below and any % budgets.</div>`
+          :`<div class="sub">Add this to unlock recommended budgets based on the 50 / 30 / 20 guideline.</div>`}
+  </div>`;
+
   // savings goal
+  const recSav = mo>0 ? Math.round(mo*REC_SAVINGS_PCT/100) : 0;
   h+=`<div class="card"><h3>🎯 Monthly savings goal</h3>
     <div class="field"><label>How much do you want to save each month?</label>
+      <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
       <input class="input" type="number" inputmode="decimal" value="${sp.settings.savingsGoal||''}" placeholder="0"
-        onchange="setSavingsGoal(this.value)"></div>
+        onchange="setSavingsGoal(this.value)"></div></div>
+    ${recSav>0?`<div class="between mt8"><span class="muted">💡 Recommended: <b>${fmt0(recSav)}</b>/mo (${REC_SAVINGS_PCT}%)</span>
+      <button class="btn text" style="padding:4px 10px" onclick="applyRecSavings()">Use</button></div>`:''}
     <div class="sub">Shown as a progress ring on Home.</div>
   </div>`;
 
   // category targets
   const exCats=(sp.categories||[]).filter(c=>c.type==='expense');
-  h+=`<div class="card"><h3>📊 Category budgets</h3>
-    <div class="sub mb8">Set a monthly target per category. Toggle <b>%</b> to budget as a percentage of income instead.</div>`;
+  h+=`<div class="card"><div class="between"><h3>📊 Category budgets</h3>
+      ${mo>0?`<button class="btn text" style="padding:4px 10px" onclick="applyAllRec()">✨ Apply all</button>`:''}</div>
+    <div class="sub mb8">Set a monthly target per category. Toggle <b>%</b> to budget as a percentage of income instead.${mo>0?' Tap <b>Use</b> to accept a recommendation.':''}</div>`;
   exCats.forEach(c=>{
     const useP=c.useIncomePct;
+    const rec = (mo>0 && REC_PCT[c.name]!=null) ? Math.round(mo*REC_PCT[c.name]/100) : 0;
     h+=`<div class="bar-row" style="margin-bottom:16px">
       <div class="between">
         <span style="font-weight:600">${c.icon||'•'} ${c.name} <span class="member-badge">${GROUPS[c.group]||''}</span></span>
@@ -805,11 +836,17 @@ function viewPlan(){
           ? `<input class="input" type="number" inputmode="decimal" style="max-width:110px" value="${c.targetPct||''}" placeholder="0" onchange="setCatTarget('${c.id}','pct',this.value)"><span class="muted">% of income ≈ ${fmt0(effectiveTarget(sp,c,viewMonth))}/mo</span>`
           : `<span class="muted">${CUR_SYMBOL}</span><input class="input" type="number" inputmode="decimal" style="max-width:140px" value="${c.target||''}" placeholder="0" onchange="setCatTarget('${c.id}','amt',this.value)"><span class="muted">/ month</span>`}
       </div>
+      ${rec>0?`<div class="between mt8"><span class="muted">💡 Recommended: <b>${fmt0(rec)}</b>/mo (${REC_PCT[c.name]}%)</span>
+        <button class="btn text" style="padding:4px 10px" onclick="applyRec('${c.id}')">Use</button></div>`:''}
     </div>`;
   });
   h+=`<button class="btn text" onclick="openSheet('managecats')">✏️ Manage categories & groups</button></div>`;
   return h;
 }
+function setAnnualIncome(v){ curSpace().settings.annualIncome=+v||0; saveSpace(activeSpace); render(); toast('Income updated'); }
+function applyRecSavings(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0)return; sp.settings.savingsGoal=Math.round(mo*REC_SAVINGS_PCT/100); saveSpace(activeSpace); render(); toast('Recommended savings applied'); }
+function applyRec(id){ const sp=curSpace(); const mo=monthlySalary(sp); const c=catById(sp,id); if(!c||mo<=0||REC_PCT[c.name]==null)return; c.useIncomePct=false; c.target=Math.round(mo*REC_PCT[c.name]/100); saveSpace(activeSpace); render(); toast(c.name+' set to recommended'); }
+function applyAllRec(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0){toast('Add your income first');return;} (sp.categories||[]).filter(c=>c.type==='expense'&&REC_PCT[c.name]!=null).forEach(c=>{ c.useIncomePct=false; c.target=Math.round(mo*REC_PCT[c.name]/100); }); sp.settings.savingsGoal=Math.round(mo*REC_SAVINGS_PCT/100); saveSpace(activeSpace); render(); toast('All recommendations applied'); }
 function setSavingsGoal(v){ curSpace().settings.savingsGoal=+v||0; saveSpace(activeSpace); toast('Savings goal updated'); }
 function setCatMode(id,useP){ const c=catById(curSpace(),id); if(c){c.useIncomePct=useP; saveSpace(activeSpace); render();} }
 function setCatTarget(id,kind,v){ const c=catById(curSpace(),id); if(!c)return; if(kind==='pct')c.targetPct=+v||0; else c.target=+v||0; saveSpace(activeSpace); render(); }
@@ -1046,6 +1083,15 @@ function sheetSettings(){
       <div class="sub mt8">Members: ${Object.values(data.shared.members||{}).map(m=>m.name).join(', ')}</div>
     </div>`;
   }
+  const annual=+(sp.settings&&sp.settings.annualIncome)||0;
+  h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
+    <h3>💵 Income (${activeSpace==='shared'?'shared':'personal'})</h3>
+    <div class="field"><label>Yearly take-home pay (after tax)</label>
+      <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
+      <input class="input" type="number" inputmode="decimal" value="${annual||''}" placeholder="e.g. 60000"
+        onchange="setAnnualIncome(this.value);openSheet('settings')"></div></div>
+    <div class="sub">${annual>0?`≈ ${fmt0(annual/12)}/mo. `:''}Used for recommended budgets in Plan.</div>
+  </div>`;
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>Appearance</h3>
     <button class="btn outline block" onclick="toggleTheme();openSheet('settings')">Toggle light / dark</button>
