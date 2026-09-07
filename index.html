@@ -71,8 +71,10 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 
 /* ---------- App shell ---------- */
 #app{max-width:1100px;margin:0 auto;min-height:100vh;padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom))}
+/* Sticky header groups the top bar + Personal/Shared toggle so the toggle
+   stays pinned while scrolling — you can always see which space you're on. */
+.appheader{position:sticky;top:0;z-index:20;background:var(--surface)}
 .topbar{
-  position:sticky;top:0;z-index:20;background:var(--surface);
   padding:calc(env(safe-area-inset-top) + 12px) 16px 8px;
   display:flex;align-items:center;gap:12px;
 }
@@ -319,17 +321,19 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 <!-- MAIN APP -->
 <div id="app" class="hidden">
   <div id="testbar" class="testbar hidden"></div>
-  <div class="topbar">
-    <div class="title"><span class="logo">🪺</span> Nest</div>
-    <div class="spacer"></div>
-    <button class="save-dot idle" id="saveDot" onclick="openBackups()" title="Save status — tap for backups &amp; restore"></button>
-    <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Theme">🌙</button>
-    <button class="icon-btn" onclick="openSheet('settings')" title="Settings">⚙️</button>
-  </div>
+  <div class="appheader">
+    <div class="topbar">
+      <div class="title"><span class="logo">🪺</span> Nest</div>
+      <div class="spacer"></div>
+      <button class="save-dot idle" id="saveDot" onclick="openBackups()" title="Save status — tap for backups &amp; restore"></button>
+      <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="Theme">🌙</button>
+      <button class="icon-btn" onclick="openSheet('settings')" title="Settings">⚙️</button>
+    </div>
 
-  <div class="segmented" id="spaceToggle">
-    <button data-space="personal" onclick="setSpace('personal')">🧍 Personal</button>
-    <button data-space="shared" onclick="setSpace('shared')">🤝 Shared</button>
+    <div class="segmented" id="spaceToggle">
+      <button data-space="personal" onclick="setSpace('personal')">🧍 Personal</button>
+      <button data-space="shared" onclick="setSpace('shared')">🤝 Shared</button>
+    </div>
   </div>
 
   <div class="content" id="content"></div>
