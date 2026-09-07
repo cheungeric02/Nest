@@ -1255,7 +1255,6 @@ function openSheet(which){
   openSheetHTML(html);
 }
 function sheetSettings(){
-  const sp=curSpace();
   let h=`<div class="grabber"></div><h2>Settings</h2>
     <div class="card" style="box-shadow:none;background:var(--surface-container)">
       <div class="between"><div><b>${user.name}</b><div class="sub">${user.email||''}</div></div><span class="member-badge">${TEST_MODE?'test':'signed in'}</span></div>
@@ -1269,15 +1268,6 @@ function sheetSettings(){
       <div class="sub mt8">Members: ${Object.values(data.shared.members||{}).map(m=>m.name).join(', ')}</div>
     </div>`;
   }
-  const pay=+(sp.settings&&sp.settings.paycheck)||0; const payMo=pay*26/12;
-  h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
-    <h3>💵 Income (${activeSpace==='shared'?'shared':'personal'})</h3>
-    <div class="field"><label>Paycheck (take-home, every 2 weeks)</label>
-      <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
-      <input class="input" type="number" inputmode="decimal" value="${pay||''}" placeholder="e.g. 1800"
-        onchange="setPaycheck(this.value);openSheet('settings')"></div></div>
-    <div class="sub">${pay>0?`≈ ${fmt0(payMo)}/mo. `:''}Used for recommended budgets in Plan.</div>
-  </div>`;
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>Appearance</h3>
     <button class="btn outline block" onclick="toggleTheme();openSheet('settings')">Toggle light / dark</button>
