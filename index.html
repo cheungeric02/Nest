@@ -1382,7 +1382,7 @@ function saveTx(){
   const d=addDraft; const amt=parseFloat(d.amount);
   if(!amt||amt<=0){ toast('Enter an amount'); return; }
   if(!d.categoryId){ toast('Pick a category'); return; }
-  if(d.type==='expense' && !(d.vendor||'').trim()){ toast('Add a store / vendor'); return; }
+  if(!d.id && d.type==='expense' && !(d.vendor||'').trim()){ toast('Add a store / vendor'); return; }  // required on new adds only, not edits
   if(d._saving) return;                 // guard: ignore a second Save tap on the same entry
   d._saving=true;
   const sp=draftSpace(); const amtR=Math.round(amt*100)/100;
