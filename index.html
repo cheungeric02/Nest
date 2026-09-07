@@ -224,7 +224,9 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 /* amount display for add */
 .amount-display{text-align:center;padding:14px 0 6px}
 .amount-display .cur{font-size:1.4rem;color:var(--on-surface-variant);vertical-align:top}
-.amount-display .num{font-size:3rem;font-weight:800;letter-spacing:-1px}
+.amount-display .num{font-size:3rem;font-weight:800;letter-spacing:-1px;overflow-wrap:anywhere}
+.amount-display .num.expr{font-size:2rem;letter-spacing:0}
+.calc-preview{min-height:20px;margin-top:2px;color:var(--primary);font-weight:700;font-size:1rem}
 .type-toggle{display:flex;gap:8px;justify-content:center;margin:10px 0 18px}
 .type-toggle button{padding:8px 20px;border-radius:var(--r-full);background:var(--surface-container-high);font-weight:600;font-size:.9rem}
 .type-toggle button.active.exp{background:var(--secondary-container);color:var(--on-secondary-container)}
@@ -232,8 +234,13 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 
 /* keypad */
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
-.key{padding:16px;border-radius:var(--r-md);background:var(--surface-container-high);font-size:1.4rem;font-weight:600;text-align:center}
+.keypad.calc{grid-template-columns:repeat(4,1fr)}
+.key{padding:16px;border-radius:var(--r-md);background:var(--surface-container-high);font-size:1.4rem;font-weight:600;text-align:center;cursor:pointer;user-select:none}
 .key:active{background:var(--primary-container)}
+.key.op{background:var(--surface-container-highest);color:var(--primary);font-weight:800}
+.key.op:active{background:var(--primary-container);color:var(--on-primary-container)}
+.key.eq{grid-column:1/-1;background:var(--primary);color:var(--on-primary)}
+.key.eq:active{filter:brightness(.94);background:var(--primary)}
 .kb-hint{display:none;text-align:center;margin:-6px 0 12px}
 @media(min-width:900px){ .kb-hint{display:block} }
 
@@ -1313,11 +1320,16 @@ function renderAddSheet(isEdit){
       <button class="chip ${d.space==='shared'?'active':''}" onclick="setDraftSpace('shared')">🤝 Shared</button>
     </div>${d.space==='shared'?`<div class="sub mt8">Split it below — your share shows on your Personal budget too.</div>`:''}</div>`;
   }
-  html+=`<div class="amount-display"><span class="cur">${CUR_SYMBOL}</span><span class="num" id="amtNum">${d.amount||'0'}</span></div>
-    <div class="keypad">
-      ${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<div class="key" onclick="keyPress('${k}')">${k}</div>`).join('')}
+  html+=`<div class="amount-display">
+      <div><span class="cur">${CUR_SYMBOL}</span><span class="num" id="amtNum">${d.amount||'0'}</span></div>
+      <div class="calc-preview" id="amtPreview"></div>
     </div>
-    <div class="sub kb-hint">⌨️ Tip: just type the amount on your keyboard · Enter to save</div>
+    <div class="keypad calc">
+      ${['7','8','9','÷','4','5','6','×','1','2','3','−','.','0','⌫','+']
+        .map(k=>{ const op='÷×−+'.includes(k); return `<div class="key${op?' op':''}" onclick="keyPress('${k}')">${k}</div>`; }).join('')}
+      <div class="key eq" onclick="keyPress('=')">=</div>
+    </div>
+    <div class="sub kb-hint">⌨️ Tip: type the amount — math works too (e.g. 12.50+8, 40/4) · Enter to save</div>
     <div class="field"><label>Category</label><div class="chips">
       ${cats.map(c=>`<button class="chip ${d.categoryId===c.id?'active':''}" onclick="setDraftCat('${c.id}')">${c.icon||'•'} ${c.name}</button>`).join('')}
     </div></div>`;
@@ -1350,6 +1362,7 @@ function renderAddSheet(isEdit){
   html+=`<div class="field"><label>Note</label><input class="input" value="${d.note}" oninput="addDraft.note=this.value" placeholder="Optional"></div>
     <button class="btn filled block" onclick="saveTx()">${isEdit?'Save changes':(d.repeat!=='none'?'Add recurring '+d.type:'Add '+d.type)}</button>`;
   openSheetHTML(html);
+  renderAmt();
   if(_keepScroll){ const s=document.getElementById('sheet'); if(s) s.scrollTop=_keepScroll; }
 }
 function setDraftType(t){ addDraft.type=t; addDraft.categoryId=null; renderAddSheet(!!addDraft.id); }
@@ -1363,7 +1376,7 @@ function setDraftPayer(u){ addDraft.paidBy=u; renderAddSheet(!!addDraft.id); }
 function setSplit(s){ addDraft.splitType=s; renderAddSheet(!!addDraft.id); }
 function setRepeat(r){ addDraft.repeat=r; renderAddSheet(!!addDraft.id); }
 function splitHintText(d){
-  const amt=parseFloat(d.amount)||0; if(amt<=0) return '';
+  const amt=evalExpr(d.amount)||0; if(!isFinite(amt)||amt<=0) return '';
   let mine=null;
   if(d.splitType==='custompct'){ const p=Math.max(0,Math.min(100,parseFloat(d.customPct)||0)); mine=amt*p/100; }
   else if(d.splitType==='custom'){ mine=parseFloat(d.customMine)||0; }
@@ -1374,17 +1387,76 @@ function splitHintText(d){
   return `You ${fmt(mine)} · Partner ${fmt(Math.max(0,theirs))}`;
 }
 function updateSplitHint(){ const el=document.getElementById('splitHint'); if(el) el.textContent=splitHintText(addDraft); }
-function keyPress(k){
-  let a=addDraft.amount||'';
-  if(k==='⌫'){ a=a.slice(0,-1); }
-  else if(k==='.'){ if(!a.includes('.')) a=(a||'0')+'.'; }
-  else { if(a.includes('.')&&a.split('.')[1].length>=2) return; a=(a==='0'?'':a)+k; }
-  addDraft.amount=a; const el=document.getElementById('amtNum'); if(el) el.textContent=a||'0';
+/* Safe arithmetic evaluator for the amount field. Understands + - × ÷ only
+   (no eval, no parentheses). Multiply/divide bind tighter than add/subtract.
+   Returns NaN on anything invalid; tolerates a trailing operator (uses the
+   valid part, so a half-typed "12+" reads as 12). */
+function evalExpr(str){
+  if(str==null) return NaN;
+  const s=String(str).replace(/[×✕xX]/g,'*').replace(/÷/g,'/').replace(/[−–]/g,'-').replace(/,/g,'.').replace(/\s+/g,'');
+  if(!s) return NaN;
+  if(!/^[0-9.+\-*/]+$/.test(s)) return NaN;
+  const toks=[]; let num='';
+  for(const ch of s){
+    if('+-*/'.includes(ch)){
+      if(num===''){ if(toks.length===0) return NaN; return NaN; } // leading/double operator
+      toks.push(parseFloat(num)); num=''; toks.push(ch);
+    } else num+=ch;
+  }
+  if(num!=='') toks.push(parseFloat(num)); else toks.pop();      // drop a trailing operator
+  if(!toks.length || typeof toks[0]!=='number' || isNaN(toks[0])) return NaN;
+  if(toks.some(t=>typeof t==='number' && isNaN(t))) return NaN;
+  const p=[toks[0]];                                             // pass 1: * and /
+  for(let i=1;i<toks.length;i+=2){
+    const op=toks[i], b=toks[i+1];
+    if(typeof b!=='number') break;
+    if(op==='*') p[p.length-1]*=b;
+    else if(op==='/') p[p.length-1] = b===0?NaN : p[p.length-1]/b;
+    else p.push(op,b);
+  }
+  let res=p[0];                                                  // pass 2: + and -
+  for(let i=1;i<p.length;i+=2){ const op=p[i],b=p[i+1]; if(op==='+')res+=b; else if(op==='-')res-=b; }
+  return res;
+}
+function trimNum(n){ n=Math.round(n*100)/100; return String(n); }
+function renderAmt(){
+  const a=addDraft.amount||'';
+  const el=document.getElementById('amtNum');
+  if(el){ el.textContent=a||'0'; el.classList.toggle('expr', /[+\-*/]/.test(a) || a.length>9); }
+  const pv=document.getElementById('amtPreview');
+  if(pv){
+    if(/[+\-*/]/.test(a)){ const r=evalExpr(a); pv.textContent = isFinite(r)? '= '+CUR_SYMBOL+trimNum(r) : ''; }
+    else pv.textContent='';
+  }
   updateSplitHint();
 }
+function keyPress(k){
+  let a=addDraft.amount||'';
+  const isOp=c=>'+-*/'.includes(c);
+  if(k==='⌫'){ a=a.slice(0,-1); }
+  else if(k==='C'){ a=''; }
+  else if(k==='='){ const r=evalExpr(a); if(isFinite(r)) a=trimNum(r); }
+  else if('÷×−+-*/'.includes(k)){
+    const op = k==='÷'?'/' : k==='×'?'*' : k==='−'?'-' : k;
+    if(a==='') return;                              // no leading operator
+    a = isOp(a[a.length-1]) ? a.slice(0,-1)+op : a+op;   // replace a trailing operator
+  }
+  else if(k==='.'){
+    const seg=a.split(/[+\-*/]/).pop();
+    if(seg.includes('.')) return;                  // one decimal per number
+    a = (a===''||isOp(a[a.length-1])) ? a+'0.' : a+'.';
+  }
+  else {                                           // a digit
+    if(a==='0') a='';
+    const seg=a.split(/[+\-*/]/).pop();
+    if(seg.includes('.') && seg.split('.')[1].length>=2) return; // max 2 decimals per number
+    a=a+k;
+  }
+  addDraft.amount=a; renderAmt();
+}
 function saveTx(){
-  const d=addDraft; const amt=parseFloat(d.amount);
-  if(!amt||amt<=0){ toast('Enter an amount'); return; }
+  const d=addDraft; const amt=evalExpr(d.amount);
+  if(!isFinite(amt)||amt<=0){ toast('Enter a valid amount'); return; }
   if(!d.categoryId){ toast('Pick a category'); return; }
   if(!d.id && d.type==='expense' && !(d.vendor||'').trim()){ toast('Add a store / vendor'); return; }  // required on new adds only, not edits
   if(d._saving) return;                 // guard: ignore a second Save tap on the same entry
@@ -1626,6 +1698,9 @@ function initAmountKeyboard(){
     if(ae && (ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT')) return; // let real fields type
     if(k>='0' && k<='9'){ e.preventDefault(); keyPress(k); }
     else if(k==='.'||k===','){ e.preventDefault(); keyPress('.'); }
+    else if(k==='+'||k==='-'||k==='*'||k==='/'){ e.preventDefault(); keyPress(k); }   // math operators
+    else if(k==='x'||k==='X'){ e.preventDefault(); keyPress('*'); }                    // x = multiply
+    else if(k==='='){ e.preventDefault(); keyPress('='); }                             // evaluate in place
     else if(k==='Backspace'||k==='Delete'){ e.preventDefault(); keyPress('⌫'); }
     else if(k==='Enter'){ e.preventDefault(); saveTx(); }
   });
