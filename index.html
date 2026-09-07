@@ -310,11 +310,16 @@ h1,h2,h3,h4{margin:0;font-weight:600}
    TEST_MODE = true  -> no Firebase, localStorage only, fake users.
    Flip to false and fill firebaseConfig once Eric provides it.
    ===================================================================== */
-const TEST_MODE = true;
+const TEST_MODE = false;
 
 const firebaseConfig = {
-  // PASTE FROM FIREBASE CONSOLE HERE (used only when TEST_MODE === false)
-  apiKey:"", authDomain:"", databaseURL:"", projectId:"", storageBucket:"", messagingSenderId:"", appId:""
+  apiKey: "AIzaSyAkhXgdOJkdCCfl5pAf75Q4kvKwYvF2yAs",
+  authDomain: "nest-87cb1.firebaseapp.com",
+  databaseURL: "https://nest-87cb1-default-rtdb.firebaseio.com",
+  projectId: "nest-87cb1",
+  storageBucket: "nest-87cb1.firebasestorage.app",
+  messagingSenderId: "312747137679",
+  appId: "1:312747137679:web:77adced4cd0bc8f8c4eefa"
 };
 
 /* ---------- safe storage (localStorage throws inside data: URLs / private mode) ---------- */
@@ -454,16 +459,18 @@ function attachPersonal(){
     if(!TEST_MODE) render();
   });
 }
+function attachShared(sid){
+  if(!sid) return;
+  db.ref('shared/'+sid).off();
+  db.ref('shared/'+sid).on('value',s=>{
+    const v=s.val(); data.shared = v?normalizeSpace(v):null;
+    data.shared && (data.shared.id=sid);
+    render();
+  });
+}
 async function attachSharedIfMember(){
   const snap = await db.ref('users/'+user.uid+'/sharedSpace').get();
-  const sid = snap.val();
-  if(sid){
-    db.ref('shared/'+sid).on('value',s=>{
-      const v=s.val(); data.shared = v?normalizeSpace(v):null;
-      data.shared && (data.shared.id=sid);
-      render();
-    });
-  }
+  attachShared(snap.val());
 }
 function seedFirstTime(which){
   const sp=blankSpace(); sp.categories=buildDefaultCats(); sp.settings.savingsGoal=0; return sp;
@@ -845,9 +852,12 @@ function createShared(){
   } else {
     const sid='sp_'+uid();
     sp.id=sid; data.shared=sp;
-    db.ref('shared/'+sid).set(stripForSave(sp));
-    db.ref('users/'+user.uid+'/sharedSpace').set(sid);
-    attachSharedIfMember(); render();
+    const updates={};
+    updates['shared/'+sid]=stripForSave(sp);
+    updates['users/'+user.uid+'/sharedSpace']=sid;
+    updates['inviteCodes/'+sp.inviteCode]=sid;
+    db.ref().update(updates);
+    attachShared(sid); render();
     toast('Shared space created');
   }
 }
@@ -865,7 +875,7 @@ function joinShared(code){
     if(!sid){ toast('Invalid code'); return; }
     db.ref('shared/'+sid+'/members/'+user.uid).set({name:user.name});
     db.ref('users/'+user.uid+'/sharedSpace').set(sid);
-    closeSheet(); attachSharedIfMember(); render(); toast('Joined!');
+    closeSheet(); attachShared(sid); render(); toast('Joined!');
   });
 }
 
