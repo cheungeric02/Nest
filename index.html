@@ -1092,14 +1092,17 @@ function viewHome(){
   const leftoverActual = Math.round((savings - goal)*100)/100;
 
   // forward projection for the current month, before the final-days reminder:
-  //   net saved so far  + paycheques still to come  − budget still to spend  − savings goal
+  //   net saved so far  + income still to come  − budget still to spend  − savings goal
   let remainingBudget = 0, expectedIncome = 0;
   if(isCur && !remind){
     (sp.categories||[]).filter(c=>c.type==='expense').forEach(c=>{
       const t=effectiveTarget(sp,c,viewMonth);
       if(t>0) remainingBudget += Math.max(0, t - spentByCat(mtx,c.id));
     });
-    expectedIncome = upcomingIncomeThisMonth(sp);
+    // income still to come = recurring-income occurrences due later this month, OR the
+    // shortfall to your expected monthly pay if a paycheck is set without a recurring rule
+    const bySalary = monthlySalary(sp)>0 ? Math.max(0, monthlySalary(sp) - income) : 0;
+    expectedIncome = Math.max(upcomingIncomeThisMonth(sp), bySalary);
   }
   const projLeftover = Math.round((savings + expectedIncome - remainingBudget - goal)*100)/100;
 
@@ -1114,13 +1117,18 @@ function viewHome(){
       <div class="sub">${isPast?'This month wrapped up and you':'The month is almost over — you'} came in under budget after spending${goalNote}. Move it into savings or investments so it doesn't get spent next month.</div>
       <button class="btn filled block mt8" onclick="ackLeftover('${viewMonth}')">✓ I moved it to savings</button>
     </div>`;
-  } else if(isCur && !remind && projLeftover>0.5 && (income>0 || expectedIncome>0)){
+  } else if(isCur && !remind && (income>0 || expectedIncome>0 || remainingBudget>0)){
     const parts = `${fmt0(savings)} saved so far`
       + (expectedIncome>0 ? ` + ${fmt0(expectedIncome)} still to come` : '')
       + (remainingBudget>0 ? ` − ${fmt0(remainingBudget)} left to spend` : '')
       + (goal>0 ? ` − ${fmt0(goal)} goal` : '');
-    h+=`<div class="card leftover-track"><div class="between"><span>💡 On pace for <b>${fmt(projLeftover)}</b> left over</span><span class="pill ok">${daysLeft}d left</span></div>
-      <div class="sub" style="margin-top:4px">Projected for month-end — ${parts}. Great to move into savings or investments.</div></div>`;
+    if(projLeftover>0.5){
+      h+=`<div class="card leftover-track"><div class="between"><span>💡 On pace for <b>${fmt(projLeftover)}</b> left over</span><span class="pill ok">${daysLeft}d left</span></div>
+        <div class="sub" style="margin-top:4px">Projected for month-end — ${parts}. Great to move into savings or investments.</div></div>`;
+    } else {
+      h+=`<div class="card leftover-track"><div class="between"><span>💡 On pace to use your full budget this month</span><span class="pill">${daysLeft}d left</span></div>
+        <div class="sub" style="margin-top:4px">Projected for month-end — ${parts}. Come in under your budgets and the difference becomes savings.</div></div>`;
+    }
   }
   }
 
@@ -1264,6 +1272,7 @@ function planPieChart(sp, income){
     const t=effectiveTarget(sp,c,viewMonth);
     if(t>0.005) segs.push({name:c.name, icon:c.icon||'•', val:t});
   });
+  segs.sort((a,b)=> b.val-a.val); // biggest share first (matches the budget list order)
   if(goal>0.005) segs.push({name:'Savings goal', icon:'🎯', val:goal});
   if(!segs.length) return `<div class="sub">Set category budgets or a savings goal to see how your income splits.</div>`;
   segs.forEach((s,i)=>{ s.color = PIE_COLORS[i%PIE_COLORS.length]; });
@@ -1357,7 +1366,8 @@ function viewPlan(){
   h+=`</div>`;
 
   // category targets
-  const exCats=(sp.categories||[]).filter(c=>c.type==='expense');
+  const exCats=(sp.categories||[]).filter(c=>c.type==='expense')
+    .sort((a,b)=> effectiveTarget(sp,b,viewMonth)-effectiveTarget(sp,a,viewMonth)); // highest % of income first
   h+=`<div class="card"><div class="between"><h3>📊 Category budgets</h3>
       ${mo>0?`<button class="btn text" style="padding:4px 10px" onclick="applyAllRec()">✨ Apply all</button>`:''}</div>
     <div class="sub mb8">Set a monthly target per category. Toggle <b>%</b> to budget as a percentage of income instead.${mo>0?' Tap <b>Use</b> to accept a recommendation.':''}</div>`;
