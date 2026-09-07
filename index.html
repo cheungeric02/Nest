@@ -886,7 +886,7 @@ function viewTx(){
     const click = t._shared ? `openReflected('${t.srcId}')` : `openEdit('${t.id}')`;
     h+=`<div class="tx ${isInc?'inc':''}${t._shared?' reflected':''}" onclick="${click}">
       <div class="ic">${c.icon||'•'}</div>
-      <div class="mid"><div class="t1">${c.name} ${tag}</div><div class="t2">${t._shared?'your share of a Shared expense':(t.vendor||t.note||sub)}</div></div>
+      <div class="mid"><div class="t1">${c.name} ${tag}</div><div class="t2">${t._shared?(t.vendor||'Your share of a Shared expense'):(t.vendor||t.note||sub)}</div></div>
       <div class="amt ${isInc?'inc':''}">${isInc?'+':'-'}${fmt(t.amount)}</div>
     </div>`;
   });
@@ -1194,8 +1194,11 @@ function saveTx(){
   const d=addDraft; const amt=parseFloat(d.amount);
   if(!amt||amt<=0){ toast('Enter an amount'); return; }
   if(!d.categoryId){ toast('Pick a category'); return; }
+  if(d._saving) return;                 // guard: ignore a second Save tap on the same entry
+  d._saving=true;
   const sp=draftSpace(); const amtR=Math.round(amt*100)/100;
   const isSharedExp = d.space==='shared' && d.type==='expense';
+  closeSheet();                         // close now so there is nothing left to double-tap
 
   // Recurring: create a rule (only on a fresh add), then generate occurrences.
   if(!d.id && d.repeat && d.repeat!=='none'){
@@ -1204,7 +1207,7 @@ function saveTx(){
     if(isSharedExp){ rule.paidBy=d.paidBy; rule.splitType=d.splitType; rule.customMine=d.customMine; rule.customPct=d.customPct; }
     sp.recurring=asArray(sp.recurring); sp.recurring.push(rule);
     runRecurring(sp); // generates + saves
-    closeSheet(); render();
+    render();
     toast('Recurring '+d.type+' added');
     return;
   }
@@ -1217,7 +1220,7 @@ function saveTx(){
   sp.transactions=asArray(sp.transactions);
   if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0){ t.recurringId=sp.transactions[i].recurringId; t.occ=sp.transactions[i].occ; sp.transactions[i]=t; } }
   else sp.transactions.push(t);
-  saveSpace(d.space); closeSheet(); render();
+  saveSpace(d.space); render();
   toast(d.id?'Updated':'Added '+fmt(amt));
 }
 function deleteTx(id){
