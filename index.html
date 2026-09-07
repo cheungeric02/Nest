@@ -216,6 +216,8 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
 .key{padding:16px;border-radius:var(--r-md);background:var(--surface-container-high);font-size:1.4rem;font-weight:600;text-align:center}
 .key:active{background:var(--primary-container)}
+.kb-hint{display:none;text-align:center;margin:-6px 0 12px}
+@media(min-width:900px){ .kb-hint{display:block} }
 
 /* insights bars */
 .mbars{display:flex;align-items:flex-end;gap:8px;height:150px;padding-top:10px}
@@ -423,6 +425,7 @@ function blankSpace(){
 window.addEventListener('DOMContentLoaded', ()=>{
   initTheme();
   initSheetGesture();
+  initAmountKeyboard();
   if(TEST_MODE){ bootTestMode(); }
   else { bootFirebase(); }
   if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
@@ -1123,6 +1126,7 @@ function renderAddSheet(isEdit){
     <div class="keypad">
       ${['1','2','3','4','5','6','7','8','9','.','0','⌫'].map(k=>`<div class="key" onclick="keyPress('${k}')">${k}</div>`).join('')}
     </div>
+    <div class="sub kb-hint">⌨️ Tip: just type the amount on your keyboard · Enter to save</div>
     <div class="field"><label>Category</label><div class="chips">
       ${cats.map(c=>`<button class="chip ${d.categoryId===c.id?'active':''}" onclick="setDraftCat('${c.id}')">${c.icon||'•'} ${c.name}</button>`).join('')}
     </div></div>`;
@@ -1390,6 +1394,27 @@ function initSheetGesture(){
   sheet.addEventListener('touchmove',  e=>move(e.touches[0].clientY, e), {passive:false});
   sheet.addEventListener('touchend',   end);
   sheet.addEventListener('touchcancel',end);
+}
+
+/* Physical-keyboard entry for the amount while the Add/Edit sheet is open
+   (mainly for desktop — type on the number pad instead of clicking the keypad).
+   Number keys route to the on-screen keypad's keyPress; typing in the real
+   text fields (vendor / note / date / split) is left alone. */
+function initAmountKeyboard(){
+  document.addEventListener('keydown', e=>{
+    const sheet=document.getElementById('sheet');
+    if(!sheet || !sheet.classList.contains('show')) return;
+    if(!document.getElementById('amtNum')) return;         // only the Add/Edit sheet has the amount pad
+    if(e.ctrlKey||e.metaKey||e.altKey) return;             // don't clobber shortcuts
+    const k=e.key;
+    if(k==='Escape'){ e.preventDefault(); closeSheet(); return; }
+    const ae=document.activeElement;
+    if(ae && (ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT')) return; // let real fields type
+    if(k>='0' && k<='9'){ e.preventDefault(); keyPress(k); }
+    else if(k==='.'||k===','){ e.preventDefault(); keyPress('.'); }
+    else if(k==='Backspace'||k==='Delete'){ e.preventDefault(); keyPress('⌫'); }
+    else if(k==='Enter'){ e.preventDefault(); saveTx(); }
+  });
 }
 </script>
 </body>
