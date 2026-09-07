@@ -265,6 +265,10 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .empty .em{font-size:3rem;margin-bottom:10px}
 
 /* auth / signin */
+.splash{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:var(--surface)}
+.splash .logo-big{font-size:4rem;animation:splashPulse 1.4s ease-in-out infinite}
+.splash h1{font-size:2rem;letter-spacing:-1px;color:var(--on-surface);margin:0;opacity:.9}
+@keyframes splashPulse{0%,100%{transform:scale(1);opacity:.8}50%{transform:scale(1.09);opacity:1}}
 .signin-wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center;gap:8px}
 .signin-wrap .logo-big{font-size:4rem}
 .signin-wrap h1{font-size:2.2rem;letter-spacing:-1px}
@@ -322,6 +326,12 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 <body>
 
 <!-- SIGN IN -->
+<!-- SPLASH: shown on first paint while auth restores, so a signed-in return goes straight to the app (no sign-in flash) -->
+<div id="splash" class="splash">
+  <div class="logo-big">🪺</div>
+  <h1>Nest</h1>
+</div>
+
 <div id="signin" class="signin-wrap hidden">
   <div class="logo-big">🪺</div>
   <h1>Nest</h1>
@@ -531,9 +541,12 @@ function bootFirebase(){
   auth = firebase.auth(); db = firebase.database();
   watchConnection();
   try{ auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
-  document.getElementById('signin').classList.remove('hidden');
+  // Keep the splash up (not the sign-in screen) until auth actually resolves —
+  // a persisted session then goes straight to the app with no sign-in flash.
   auth.getRedirectResult().catch(e=>signInError(e));
+  let authResolved=false;
   auth.onAuthStateChanged(async u=>{
+    authResolved=true;
     if(u){
       user={uid:u.uid,name:u.displayName||'Me',email:u.email,photo:u.photoURL||''};
       signinMsg('');
@@ -542,11 +555,17 @@ function bootFirebase(){
       attachSharedIfMember();
       db.ref('users/'+u.uid).update({name:user.name,email:user.email,photo:user.photo}).catch(()=>{});
     } else {
-      user=null; document.getElementById('signin').classList.remove('hidden');
-      document.getElementById('app').classList.add('hidden');
-      document.getElementById('navbar').classList.add('hidden');
+      user=null; showSignIn();
     }
   });
+  // Safety net: if Firebase never answers (script blocked / offline first load), reveal sign-in.
+  setTimeout(()=>{ if(!authResolved) showSignIn(); }, 8000);
+}
+function showSignIn(){
+  document.getElementById('splash').classList.add('hidden');
+  document.getElementById('signin').classList.remove('hidden');
+  document.getElementById('app').classList.add('hidden');
+  document.getElementById('navbar').classList.add('hidden');
 }
 function doSignIn(){
   if(TEST_MODE){ toast('Test mode — already signed in'); return; }
@@ -806,6 +825,7 @@ function updThemeBtn(){ const cur=document.documentElement.getAttribute('data-th
    SHOW APP / RENDER DISPATCH
    ===================================================================== */
 function showApp(){
+  document.getElementById('splash').classList.add('hidden');
   document.getElementById('signin').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
   document.getElementById('navbar').classList.remove('hidden');
