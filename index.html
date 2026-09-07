@@ -656,15 +656,25 @@ function saveSpace(which){
   // 2) cloud write with honest status
   const path = which==='personal' ? 'personal/'+user.uid : 'shared/'+sp.id;
   setSaveState(isOnline?'saving':'offline');
-  return db.ref(path).set(stripForSave(sp))
-    .then(()=>{ setSaveState('saved'); maybeBackup(which); })
-    .catch(err=>{
-      setSaveState('error');
-      console.warn('Nest save failed', err);
-      toast('⚠️ Couldn’t save to the cloud — a copy is safe on this device'+((err&&err.code==='PERMISSION_DENIED')?' (check Firebase rules)':''));
-    });
+  const onErr=err=>{
+    setSaveState('error');
+    console.warn('Nest save failed', err);
+    toast('⚠️ Couldn’t save to the cloud — a copy is safe on this device'+((err&&err.code==='PERMISSION_DENIED')?' (check Firebase rules)':''));
+  };
+  try{
+    return db.ref(path).set(stripForSave(sp))
+      .then(()=>{ setSaveState('saved'); maybeBackup(which); })
+      .catch(onErr);
+  }catch(err){ onErr(err); return Promise.resolve(); }   // .set() can throw synchronously on bad data
 }
-function stripForSave(sp){ const c={...sp}; delete c.id; return c; }
+// Firebase RTDB .set() throws on ANY undefined value, which silently kills the whole write.
+// Deep-clone the space and drop every undefined key so a stray field can never poison a save.
+function pruneUndef(v){
+  if(Array.isArray(v)) return v.map(pruneUndef);
+  if(v && typeof v==='object'){ const o={}; for(const k in v){ if(v[k]!==undefined) o[k]=pruneUndef(v[k]); } return o; }
+  return v;
+}
+function stripForSave(sp){ const c=pruneUndef(sp); delete c.id; return c; }
 
 /* ---- connection awareness ---- */
 function watchConnection(){
@@ -1609,7 +1619,7 @@ function saveTx(){
     t.split=computeSplit(sp,amtR,d.paidBy,d.splitType,d.customMine,d.customPct);
   }
   sp.transactions=asArray(sp.transactions);
-  if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0){ t.recurringId=sp.transactions[i].recurringId; t.occ=sp.transactions[i].occ; sp.transactions[i]=t; } }
+  if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0){ const o=sp.transactions[i]; if(o.recurringId!=null) t.recurringId=o.recurringId; if(o.occ!=null) t.occ=o.occ; sp.transactions[i]=t; } }
   else sp.transactions.push(t);
   saveSpace(d.space); render();
   toast(d.id?'Updated':'Added '+fmt(amt));
