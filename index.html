@@ -324,6 +324,42 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .fav-li .fav-amt{font-weight:800;font-size:1.05rem;flex:none;margin-left:auto}
 .fav-empty{color:var(--on-surface-variant);font-size:.9rem;text-align:center;padding:22px 8px}
 
+/* CSV import */
+.imp-drop{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;padding:26px 14px;border:2px dashed var(--outline-variant);border-radius:var(--r-lg);background:var(--surface-container);cursor:pointer;margin:6px 0 4px}
+.imp-drop:active{background:var(--primary-container)}
+.imp-drop-ic{font-size:2rem;line-height:1}
+.imp-field{margin:0 0 12px}
+.imp-field>label{display:block;font-size:.8rem;color:var(--on-surface-variant);margin:0 0 5px;font-weight:600}
+.imp-field>select{width:100%;padding:11px 12px;border:1px solid var(--outline-variant);border-radius:var(--r-md);background:var(--surface-container-high);color:var(--on-surface);font-size:.95rem;font-family:inherit;-webkit-appearance:none;appearance:none}
+.imp-prev{background:var(--surface-container);border-radius:var(--r-md);padding:10px 12px;margin:4px 0 16px}
+.imp-prev-h{font-size:.72rem;letter-spacing:.05em;text-transform:uppercase;color:var(--on-surface-variant);font-weight:700;margin-bottom:6px}
+.imp-prev-row{display:flex;align-items:center;gap:10px;font-size:.86rem;padding:3px 0}
+.imp-prev-desc{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--on-surface-variant)}
+.imp-pos{color:var(--success);font-weight:700}
+.imp-neg{font-weight:700}
+.imp-bucket-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:.95rem;margin:18px 0 8px}
+.imp-bucket-h.imp-clickable{cursor:pointer}
+.imp-count{background:var(--surface-container-highest);color:var(--on-surface-variant);font-size:.78rem;font-weight:700;padding:1px 9px;border-radius:var(--r-full)}
+.imp-caret{margin-left:auto;color:var(--on-surface-variant);font-size:.85rem}
+.imp-row{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--outline-variant)}
+.imp-row:first-of-type{border-top:0}
+.imp-row.imp-off{opacity:.42}
+.imp-chk{flex:none;width:26px;height:26px;margin-top:2px;border-radius:var(--r-full);border:2px solid var(--outline-variant);background:transparent;color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.imp-chk.on{background:var(--primary);border-color:var(--primary)}
+.imp-row-main{flex:1;min-width:0}
+.imp-row-top{display:flex;align-items:baseline;gap:8px}
+.imp-row-date{font-size:.78rem;color:var(--on-surface-variant);flex:none}
+.imp-row-amt{margin-left:auto;font-weight:800;font-size:1rem;flex:none}
+.imp-row-amt.imp-pos{color:var(--success)}
+.imp-row-desc{font-size:.9rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:1px 0 7px}
+.imp-row-ctl{display:flex;gap:8px;align-items:center}
+.imp-cat{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--outline-variant);border-radius:var(--r-sm);background:var(--surface-container-high);color:var(--on-surface);font-size:.85rem;font-family:inherit;-webkit-appearance:none;appearance:none}
+.imp-share{flex:none;padding:8px 12px;border:1px solid var(--outline-variant);border-radius:var(--r-full);background:var(--surface-container-high);color:var(--on-surface-variant);font-size:.8rem;font-weight:600;cursor:pointer}
+.imp-share.on{background:var(--primary-container);color:var(--on-surface);border-color:transparent}
+.imp-inc-tag{font-size:.8rem;color:var(--success);font-weight:700;padding:6px 0}
+.imp-mini{display:flex;align-items:center;gap:10px;font-size:.82rem;padding:5px 0;color:var(--on-surface-variant)}
+.imp-mini-desc{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
 /* keypad */
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
 .keypad.calc{grid-template-columns:repeat(4,1fr)}
@@ -548,6 +584,7 @@ let activeTab = "home";
 let viewMonth = ymKey(new Date());  // "YYYY-MM"
 let data = { personal:blankSpace(), shared:null };  // shared null until joined
 let addDraft = null;
+let importState = null;
 let unsub = [];
 let isOnline = true;                 // driven by Firebase .info/connected
 let saveState = 'idle';              // idle | saving | saved | offline | error
@@ -556,7 +593,7 @@ const BACKUP_KEEP_CLOUD = 30;        // daily cloud snapshots retained
 const BACKUP_KEEP_LOCAL = 7;         // on-device snapshots retained
 
 function blankSpace(){
-  return { categories:[], transactions:[], recurring:[], favourites:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
+  return { categories:[], transactions:[], recurring:[], favourites:[], vendorMap:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
 }
 
 /* =====================================================================
@@ -886,6 +923,7 @@ function normalizeSpace(sp){
     settlements: asArray(sp.settlements),
     recurring: asArray(sp.recurring),
     favourites: asArray(sp.favourites),
+    vendorMap: asArray(sp.vendorMap),
     settings: sp.settings || {savingsGoal:0, paycheck:0},
     members: sp.members || {},
     inviteCode: sp.inviteCode || null,
@@ -2029,6 +2067,427 @@ function applyFavourite(id){
   toast('Filled from ⭐ '+f.name);
   renderAddSheet(!!addDraft.id);
 }
+/* =====================================================================
+   CSV STATEMENT IMPORT  +  RECONCILIATION / AUDIT
+   Fully client-side: the file is read in the browser and never uploaded.
+   Flow: choose file → map columns → review 3 buckets → import.
+   ===================================================================== */
+const IMPORT_DATE_WINDOW = 5;   // days of drift allowed between statement & Nest (posting vs purchase)
+const IMPORT_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+// keyword → default category NAME (resolved to the space's own category at import time)
+const KEYWORD_CAT = [
+  [/\b(loblaw|metro|sobeys|no ?frills|freshco|food ?basics|walmart|costco|superstore|grocer|zehrs|farm boy|whole foods|save on|t&t|galleria)/,"Groceries"],
+  [/\b(tim horton|starbucks|coffee|cafe|café|second cup|mccafe|espresso)/,"Coffee"],
+  [/\b(uber eats|doordash|skip ?the ?dishes|restaurant|pizza|sushi|mcdonald|a&w|wendy|burger|kfc|subway|chipotle|dining|kitchen|grill|thai|ramen|noodle|taco)/,"Restaurant"],
+  [/\b(lcbo|beer store|bar |pub |brewery|wine|liquor|nightclub)/,"Going Out"],
+  [/\b(presto|ttc|go transit|via rail|metrolinx|transit|subway fare)/,"Public Transit"],
+  [/\b(uber|lyft|parking|petro|shell|esso|gas |fuel|chevron|husky)/,"Gas"],
+  [/\b(netflix|spotify|disney|crave|prime video|apple\.com\/bill|youtube premium|hbo|hulu)/,"Streaming"],
+  [/\b(cineplex|movie|theatre|theater|steam|playstation|xbox|nintendo|concert|ticketmaster)/,"Entertainment"],
+  [/\b(amazon|amzn|ebay|aliexpress|etsy|best buy|canadian tire|dollarama|winners|ikea|shoppers)/,"Shopping"],
+  [/\b(h&m|zara|uniqlo|gap|old navy|lululemon|nike|adidas|clothing|apparel|shoe)/,"Clothing"],
+  [/\b(rogers|bell|telus|fido|koodo|virgin|freedom mobile|cell)/,"Cell Phone"],
+  [/\b(hydro|enbridge|electric|water bill|utility)/,"Utilities"],
+  [/\b(wifi|internet|beanfield|teksavvy)/,"Wifi"],
+  [/\b(pharmacy|rexall|shoppers drug|dental|clinic|medical|doctor|physio)/,"Health / Medical"],
+  [/\b(goodlife|planet fitness|fit4less|gym|crossfit|yoga)/,"Gym"],
+  [/\b(rent|landlord|property mgmt|apartment)/,"Rent / Housing"],
+  [/\b(insurance|intact|aviva|sonnet|belair)/,"Insurance"],
+  [/\b(air canada|westjet|flight|expedia|airbnb|hotel|booking\.com|porter)/,"Travel"],
+  [/\b(payroll|direct deposit|paydeposit|salary|paycheque|paycheck)/,"Job"],
+];
+
+function impDateDisp(iso){                 // "2026-09-06" -> "Sep 6"
+  const p=(iso||'').split('-'); if(p.length<3) return iso||'';
+  return IMPORT_MONTHS[(+p[1]||1)-1]+' '+(+p[2]);
+}
+function impDaysBetween(a,b){              // a,b = "YYYY-MM-DD"
+  const da=new Date(a+'T00:00:00'), db=new Date(b+'T00:00:00');
+  return Math.round(Math.abs(da-db)/86400000);
+}
+function impNormVendor(s){                 // for matching + learning key
+  return (s||'').toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+}
+function impVendorKey(s){                  // first up-to-2 alpha words, digits dropped
+  const w=impNormVendor(s).replace(/\d+/g,' ').replace(/\s+/g,' ').trim().split(' ').filter(Boolean);
+  return w.slice(0,2).join(' ');
+}
+function impCleanVendor(s){                // tidy raw description for display / storage
+  return (s||'').replace(/\s+/g,' ').trim().slice(0,60);
+}
+
+/* ---- CSV parsing (RFC-4180-ish state machine) ---- */
+function impDetectDelim(text){
+  const line=(text.split(/\r?\n/).find(l=>l.trim())||'');
+  const counts={',':0,';':0,'\t':0}; let q=false;
+  for(const ch of line){ if(ch==='"') q=!q; else if(!q && counts[ch]!=null) counts[ch]++; }
+  let best=',',n=-1; for(const d in counts){ if(counts[d]>n){ n=counts[d]; best=d; } }
+  return best;
+}
+function impParseCSV(text, delim){
+  text=text.replace(/^﻿/,'');         // strip BOM
+  const rows=[]; let row=[], field='', q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){
+      if(c==='"'){ if(text[i+1]==='"'){ field+='"'; i++; } else q=false; }
+      else field+=c;
+    } else {
+      if(c==='"') q=true;
+      else if(c===delim){ row.push(field); field=''; }
+      else if(c==='\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else if(c==='\r'){ /* ignore */ }
+      else field+=c;
+    }
+  }
+  if(field!==''||row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r=>r.some(c=>String(c).trim()!==''));   // drop blank lines
+}
+
+/* ---- value parsers ---- */
+function impParseAmount(s){
+  if(s==null) return NaN;
+  s=String(s).trim(); if(!s) return NaN;
+  let neg=false;
+  if(/^\(.*\)$/.test(s)){ neg=true; s=s.slice(1,-1); }
+  if(/(^|\s)(cr)\b/i.test(s)) {/* credit marker handled by caller via sign */}
+  s=s.replace(/cr|dr/ig,'').replace(/[^0-9.\-]/g,'');   // strip $, commas, spaces, letters
+  if(s.indexOf('-')>0) s=s.replace(/-/g,'');            // trailing/embedded stray dash
+  let n=parseFloat(s); if(!isFinite(n)) return NaN;
+  if(neg) n=-Math.abs(n);
+  return n;
+}
+function impParseDate(s){
+  if(!s) return null; s=String(s).trim();
+  let m;
+  // ISO  YYYY-MM-DD  or  YYYY/MM/DD
+  if(m=s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/)){
+    return impISO(m[1],m[2],m[3]);
+  }
+  // Textual  "Sep 6, 2026" / "6 Sep 2026"
+  if(m=s.match(/^([A-Za-z]{3,})\.?\s+(\d{1,2}),?\s+(\d{4})/)){
+    const mo=IMPORT_MONTHS.findIndex(x=>x.toLowerCase()===m[1].slice(0,3).toLowerCase());
+    if(mo>=0) return impISO(m[3],mo+1,m[2]);
+  }
+  if(m=s.match(/^(\d{1,2})\s+([A-Za-z]{3,})\.?\s+(\d{4})/)){
+    const mo=IMPORT_MONTHS.findIndex(x=>x.toLowerCase()===m[2].slice(0,3).toLowerCase());
+    if(mo>=0) return impISO(m[3],mo+1,m[1]);
+  }
+  // Numeric  D/M/Y or M/D/Y  (2- or 4-digit year)
+  if(m=s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/)){
+    let a=+m[1], b=+m[2], y=+m[3]; if(y<100) y+=2000;
+    let mo,d;
+    if(a>12){ d=a; mo=b; }         // clearly day-first
+    else if(b>12){ mo=a; d=b; }    // clearly month-first
+    else { mo=a; d=b; }            // ambiguous → month-first (MDY, Eric's default)
+    return impISO(y,mo,d);
+  }
+  return null;
+}
+function impISO(y,m,d){
+  y=+y; m=+m; d=+d;
+  if(!y||!m||!d||m>12||d>31) return null;
+  return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+}
+
+/* ---- category guessing ---- */
+function impResolveCatByName(sp,name){
+  return (sp.categories||[]).find(c=>c.type==='expense'&&c.name.toLowerCase()===name.toLowerCase());
+}
+function impGuessCat(desc,sp){
+  const key=impVendorKey(desc);
+  const learned=asArray(sp.vendorMap).find(v=>v.key===key);
+  if(learned && (sp.categories||[]).some(c=>c.id===learned.categoryId)) return learned.categoryId;
+  const nv=impNormVendor(desc);
+  for(const [re,nm] of KEYWORD_CAT){ if(re.test(nv)){ const c=impResolveCatByName(sp,nm); if(c) return c.id; } }
+  return '';
+}
+function impCatOptions(sp,selId){
+  let o='<option value="">— pick —</option>';
+  (sp.categories||[]).filter(c=>c.type==='expense').forEach(c=>{
+    o+=`<option value="${c.id}" ${c.id===selId?'selected':''}>${c.icon} ${c.name}</option>`;
+  });
+  return o;
+}
+
+/* ---- step 1: choose file ---- */
+function openImport(){
+  importState={ step:'file' };
+  const h=`<div class="grabber"></div><h2>Import statement</h2>
+    <p class="sub" style="line-height:1.55">Upload a <b>CSV</b> exported from your bank or card. Everything happens on your phone — the file is never uploaded anywhere.</p>
+    <label class="imp-drop">
+      <input type="file" accept=".csv,text/csv" onchange="importFileChosen(this)" hidden>
+      <div class="imp-drop-ic">📄</div>
+      <div><b>Choose a CSV file</b></div>
+      <div class="sub">Tap to browse</div>
+    </label>
+    <p class="sub" style="font-size:.8rem;line-height:1.5;margin-top:14px">Tip: most banks have a “Download / Export → CSV” button on the transactions page. We’ll then check it against Nest so you can catch anything you missed.</p>
+    <button class="btn text block" onclick="closeSheet()">Cancel</button>`;
+  openSheetHTML(h);
+}
+function importFileChosen(input){
+  const f=input.files&&input.files[0]; if(!f) return;
+  if(f.size>6*1024*1024){ toast('That file is very large — try a single statement'); return; }
+  const r=new FileReader();
+  r.onload=()=>{ try{ importParsed(String(r.result||'')); }catch(e){ toast('Could not read that file'); } };
+  r.onerror=()=>toast('Could not read that file');
+  r.readAsText(f);
+}
+function importParsed(text){
+  const delim=impDetectDelim(text);
+  const rows=impParseCSV(text,delim);
+  if(rows.length<2){ toast('No rows found in that file'); return; }
+  // header detection: first row looks like a header if it has no parseable date
+  const first=rows[0];
+  const hasHeader = !first.some(c=>impParseDate(c));
+  const headers = hasHeader ? first.map(h=>impCleanVendor(h)) : first.map((_,i)=>'Column '+(i+1));
+  const body = hasHeader ? rows.slice(1) : rows;
+  importState={ step:'map', delim, headers, body, hasHeader };
+  importAutoMap();
+  renderImportMap();
+}
+function importAutoMap(){
+  const st=importState, H=st.headers.map(h=>h.toLowerCase());
+  const find=(...keys)=>H.findIndex(h=>keys.some(k=>h.includes(k)));
+  let date=find('date','posted','transaction date');
+  let desc=find('description','details','payee','merchant','memo','name','narration');
+  let debit=find('debit','withdraw','money out','out');
+  let credit=find('credit','deposit','money in','in');
+  let amount=find('amount','value');
+  // fall back to position/content scan when headers are generic
+  if(date<0) date=st.body[0]?st.body[0].findIndex(c=>impParseDate(c)):-1;
+  if(amount<0 && (debit<0||credit<0)){
+    amount=st.body[0]?st.body[0].findIndex((c,i)=>i!==date && !isNaN(impParseAmount(c)) && /[0-9]/.test(c)):-1;
+  }
+  if(desc<0){
+    desc=st.body[0]?st.body[0].findIndex((c,i)=>i!==date && i!==amount && isNaN(impParseAmount(c))):-1;
+  }
+  const mode=(debit>=0&&credit>=0)?'debitcredit':'single';
+  st.map={ date, desc, amount, debit, credit, mode, signExpense:true };
+}
+function renderImportMap(){
+  const st=importState;
+  const colOpts=(sel,allowNone)=>{
+    let o=allowNone?'<option value="-1">— none —</option>':'';
+    st.headers.forEach((h,i)=>{ o+=`<option value="${i}" ${i===sel?'selected':''}>${h}</option>`; });
+    return o;
+  };
+  const m=st.map;
+  let h=`<div class="grabber"></div><h2>Match columns</h2>
+    <p class="sub">Tell Nest which column is which. We took a guess — fix any that look wrong.</p>
+    <div class="imp-field"><label>Date</label><select id="mpDate" onchange="importMapChange()">${colOpts(m.date,false)}</select></div>
+    <div class="imp-field"><label>Description</label><select id="mpDesc" onchange="importMapChange()">${colOpts(m.desc,false)}</select></div>
+    <div class="imp-field"><label>Amount style</label>
+      <select id="mpMode" onchange="importMapChange()">
+        <option value="single" ${m.mode==='single'?'selected':''}>One amount column</option>
+        <option value="debitcredit" ${m.mode==='debitcredit'?'selected':''}>Separate debit &amp; credit</option>
+      </select></div>`;
+  if(m.mode==='single'){
+    h+=`<div class="imp-field"><label>Amount</label><select id="mpAmount" onchange="importMapChange()">${colOpts(m.amount,false)}</select></div>
+    <div class="imp-field"><label>In this file, spending is shown as…</label>
+      <select id="mpSign" onchange="importMapChange()">
+        <option value="1" ${m.signExpense?'selected':''}>Negative numbers (−)</option>
+        <option value="0" ${!m.signExpense?'selected':''}>Positive numbers (+)</option>
+      </select></div>`;
+  } else {
+    h+=`<div class="imp-field"><label>Debit / money out</label><select id="mpDebit" onchange="importMapChange()">${colOpts(m.debit,true)}</select></div>
+    <div class="imp-field"><label>Credit / money in</label><select id="mpCredit" onchange="importMapChange()">${colOpts(m.credit,true)}</select></div>`;
+  }
+  // live preview of first 3 parsed rows
+  const prev=importBuildParsed(true).slice(0,3);
+  h+=`<div class="imp-prev"><div class="imp-prev-h">Preview</div>`;
+  if(!prev.length){ h+=`<div class="sub">No rows parsed yet — check the columns above.</div>`; }
+  prev.forEach(p=>{
+    h+=`<div class="imp-prev-row"><span>${p.date?impDateDisp(p.date):'<span style="color:var(--error)">?date</span>'}</span>
+      <span class="imp-prev-desc">${impCleanVendor(p.desc)||'—'}</span>
+      <span class="${p.type==='income'?'imp-pos':'imp-neg'}">${p.type==='income'?'+':'−'}${fmt(p.amount)}</span></div>`;
+  });
+  h+=`</div>`;
+  h+=`<button class="btn block" onclick="importToReview()">Review ${importBuildParsed(true).length} transactions</button>
+    <button class="btn text block" onclick="openImport()">← Back</button>`;
+  openSheetHTML(h);
+}
+function importMapChange(){
+  const st=importState, m=st.map;
+  const val=id=>{ const el=document.getElementById(id); return el?parseInt(el.value,10):-1; };
+  m.mode=(document.getElementById('mpMode')||{}).value||m.mode;
+  m.date=val('mpDate'); m.desc=val('mpDesc');
+  if(m.mode==='single'){ m.amount=val('mpAmount'); m.signExpense=((document.getElementById('mpSign')||{}).value!=='0'); }
+  else { m.debit=val('mpDebit'); m.credit=val('mpCredit'); }
+  renderImportMap();
+}
+function importBuildParsed(quiet){
+  const st=importState, m=st.map, out=[];
+  st.body.forEach(r=>{
+    const date=impParseDate(r[m.date]);
+    const desc=impCleanVendor(r[m.desc]);
+    let amount=NaN, type='expense';
+    if(m.mode==='single'){
+      let n=impParseAmount(r[m.amount]);
+      if(!isFinite(n)) return;
+      const isExpense = m.signExpense ? n<0 : n>0;
+      type = isExpense?'expense':'income';
+      amount=Math.abs(n);
+    } else {
+      const d=m.debit>=0?impParseAmount(r[m.debit]):NaN;
+      const c=m.credit>=0?impParseAmount(r[m.credit]):NaN;
+      if(isFinite(d)&&Math.abs(d)>0){ type='expense'; amount=Math.abs(d); }
+      else if(isFinite(c)&&Math.abs(c)>0){ type='income'; amount=Math.abs(c); }
+      else return;
+    }
+    if(!isFinite(amount)||amount<=0) return;
+    out.push({date, desc, amount, type});
+  });
+  return out;
+}
+
+/* ---- step 3: reconcile + review ---- */
+function importToReview(){
+  const parsed=importBuildParsed();
+  if(!parsed.length){ toast('No transactions parsed — check the columns'); return; }
+  const undated=parsed.filter(p=>!p.date).length;
+  const good=parsed.filter(p=>p.date);
+  if(!good.length){ toast('Could not read the dates — check the Date column'); return; }
+  // date range of the statement
+  const dates=good.map(p=>p.date).sort();
+  const minD=dates[0], maxD=dates[dates.length-1];
+  // pool of existing Nest transactions (own, from both spaces) to match against
+  const pool=[];
+  const addPool=(sp,which)=>{ if(!sp) return; asArray(sp.transactions).forEach(t=>pool.push({t,which,used:false})); };
+  addPool(data.personal,'personal'); addPool(data.shared,'shared');
+  const matched=[], missing=[];
+  good.forEach(p=>{
+    let best=-1, bestGap=IMPORT_DATE_WINDOW+1;
+    pool.forEach((e,i)=>{
+      if(e.used) return;
+      if(e.t.type!==p.type) return;
+      if(Math.abs((e.t.amount||0)-p.amount)>0.011) return;
+      const gap=impDaysBetween(e.t.date,p.date);
+      if(gap<=IMPORT_DATE_WINDOW && gap<bestGap){ best=i; bestGap=gap; }
+    });
+    if(best>=0){ pool[best].used=true; matched.push({p, nest:pool[best].t}); }
+    else { missing.push(p); }
+  });
+  // Nest transactions inside the statement window that no statement row matched
+  const nestOnly=pool.filter(e=>!e.used && e.t.date>=minD && e.t.date<=maxD)
+                     .map(e=>({t:e.t, which:e.which}));
+  // prep add-rows
+  const base=data.personal;
+  const rows=missing.map(p=>({
+    p, include:true, shared:false,
+    categoryId: impGuessCat(p.desc, base),
+    vendor: p.desc
+  }));
+  importState.step='review';
+  importState.review={ rows, matched, nestOnly, minD, maxD, undated,
+    showMatched:false, showNest:false };
+  renderImportReview();
+}
+function renderImportReview(){
+  const rv=importState.review, base=data.personal;
+  const nInc=rv.rows.filter(r=>r.include).length;
+  let h=`<div class="grabber"></div><h2>Review &amp; import</h2>
+    <p class="sub">${impDateDisp(rv.minD)} – ${impDateDisp(rv.maxD)} · checked against everything already in Nest.</p>`;
+
+  // ── bucket: missing (add these) ──
+  h+=`<div class="imp-bucket-h">➕ Not in Nest — add these <span class="imp-count">${rv.rows.length}</span></div>`;
+  if(!rv.rows.length){
+    h+=`<div class="sub" style="padding:6px 2px 10px">Nothing missing — your statement is fully logged. 🎉</div>`;
+  }
+  const sharedOK = !!data.shared;
+  rv.rows.forEach((r,i)=>{
+    h+=`<div class="imp-row ${r.include?'':'imp-off'}">
+      <button class="imp-chk ${r.include?'on':''}" onclick="importToggleRow(${i})" aria-label="include">${r.include?'✓':''}</button>
+      <div class="imp-row-main">
+        <div class="imp-row-top"><span class="imp-row-date">${impDateDisp(r.p.date)}</span>
+          <span class="imp-row-amt ${r.p.type==='income'?'imp-pos':''}">${r.p.type==='income'?'+':'−'}${fmt(r.p.amount)}</span></div>
+        <div class="imp-row-desc">${impCleanVendor(r.p.desc)||'—'}</div>
+        <div class="imp-row-ctl">
+          ${r.p.type==='expense'
+            ? `<select class="imp-cat" onchange="importSetCat(${i},this.value)">${impCatOptions(base,r.categoryId)}</select>`
+            : `<span class="imp-inc-tag">Income</span>`}
+          ${sharedOK && r.p.type==='expense' ? `<button class="imp-share ${r.shared?'on':''}" onclick="importToggleShared(${i})">${r.shared?'🤝 Shared':'Personal'}</button>` : ``}
+        </div>
+      </div></div>`;
+  });
+
+  // ── bucket: matched (skip) ──
+  h+=`<div class="imp-bucket-h imp-clickable" onclick="importToggle('showMatched')">✅ Already in Nest <span class="imp-count">${rv.matched.length}</span><span class="imp-caret">${rv.showMatched?'▾':'▸'}</span></div>`;
+  if(rv.showMatched){
+    if(!rv.matched.length) h+=`<div class="sub" style="padding:4px 2px 8px">None matched.</div>`;
+    rv.matched.forEach(mm=>{
+      h+=`<div class="imp-mini"><span>${impDateDisp(mm.p.date)}</span><span class="imp-mini-desc">${impCleanVendor(mm.p.desc)||'—'}</span><span>${mm.p.type==='income'?'+':'−'}${fmt(mm.p.amount)}</span></div>`;
+    });
+  }
+
+  // ── bucket: in Nest, not on statement (flag) ──
+  h+=`<div class="imp-bucket-h imp-clickable" onclick="importToggle('showNest')">❓ In Nest, not on this statement <span class="imp-count">${rv.nestOnly.length}</span><span class="imp-caret">${rv.showNest?'▾':'▸'}</span></div>`;
+  if(rv.showNest){
+    h+=`<div class="sub" style="padding:2px 2px 8px;font-size:.78rem">These may be cash, another card, or a typo — nothing wrong, just worth a glance.</div>`;
+    if(!rv.nestOnly.length) h+=`<div class="sub" style="padding:4px 2px 8px">Nothing — every Nest entry in this range is on the statement.</div>`;
+    rv.nestOnly.forEach(n=>{
+      const c=catById(n.which==='shared'?data.shared:data.personal, n.t.categoryId);
+      h+=`<div class="imp-mini"><span>${impDateDisp(n.t.date)}</span><span class="imp-mini-desc">${c?c.icon+' ':''}${impCleanVendor(n.t.vendor)||(c?c.name:'—')}${n.which==='shared'?' · 🤝':''}</span><span>${n.t.type==='income'?'+':'−'}${fmt(n.t.amount)}</span></div>`;
+    });
+  }
+
+  if(rv.undated) h+=`<div class="sub" style="margin-top:10px;color:var(--error)">${rv.undated} row(s) had an unreadable date and were skipped.</div>`;
+
+  h+=`<button class="btn block" style="margin-top:16px" onclick="importCommit()" ${nInc?'':'disabled'}>Import ${nInc} transaction${nInc===1?'':'s'}</button>
+    <button class="btn text block" onclick="renderImportMap()">← Back to columns</button>`;
+  openSheetHTML(h);
+}
+function importToggleRow(i){ const r=importState.review.rows[i]; r.include=!r.include; renderImportReview(); }
+function importToggle(k){ importState.review[k]=!importState.review[k]; renderImportReview(); }
+function importSetCat(i,v){ importState.review.rows[i].categoryId=v; }
+function importToggleShared(i){ importState.review.rows[i].shared=!importState.review.rows[i].shared; renderImportReview(); }
+
+function importCommit(){
+  const rv=importState.review;
+  const rows=rv.rows.filter(r=>r.include);
+  if(!rows.length){ toast('Nothing selected to import'); return; }
+  // validate expense categories
+  for(const r of rows){ if(r.p.type==='expense' && !r.categoryId){ toast('Pick a category for every row you\'re adding'); return; } }
+  let nP=0,nS=0; const spacesUsed={};
+  rows.forEach(r=>{
+    const toShared = r.shared && data.shared && r.p.type==='expense';
+    const sp = toShared ? data.shared : data.personal;
+    const whichKey = toShared ? 'shared' : 'personal';
+    let catId=r.categoryId;
+    if(r.p.type==='income'){ catId=impIncomeCatId(sp); }
+    else if(toShared){                    // remap personal category → same-named shared category
+      const pc=catById(data.personal, r.categoryId);
+      const sc = pc ? impResolveCatByName(sp, pc.name) : null;
+      catId = sc ? sc.id : (impGuessCat(r.p.desc, sp) || impFirstExpenseCat(sp));
+    }
+    const amtR=Math.round(r.p.amount*100)/100;
+    const t={ id:uid(), date:r.p.date, amount:amtR, categoryId:catId,
+      vendor:impCleanVendor(r.vendor), note:'', type:r.p.type, imported:true };
+    if(toShared){ t.paidBy=user.uid; t.split=computeSplit(sp,amtR,user.uid,'equal'); }
+    sp.transactions=asArray(sp.transactions); sp.transactions.push(t);
+    spacesUsed[whichKey]=true;
+    // learn vendor → category (expenses only)
+    if(r.p.type==='expense' && catId){
+      const key=impVendorKey(r.p.desc);
+      if(key){ sp.vendorMap=asArray(sp.vendorMap).filter(v=>v.key!==key); sp.vendorMap.push({key, categoryId:catId}); }
+    }
+    if(toShared) nS++; else nP++;
+  });
+  if(spacesUsed.personal) saveSpace('personal');
+  if(spacesUsed.shared) saveSpace('shared');
+  closeSheet(); render();
+  importState=null;
+  toast('Imported '+(nP+nS)+' transaction'+((nP+nS)===1?'':'s'));
+}
+function impIncomeCatId(sp){
+  const c=(sp.categories||[]).find(x=>x.type==='income'); return c?c.id:'';
+}
+function impFirstExpenseCat(sp){
+  const c=(sp.categories||[]).find(x=>x.type==='expense'&&x.name==='Other')||(sp.categories||[]).find(x=>x.type==='expense');
+  return c?c.id:'';
+}
+
 function setDraftPayer(u){ addDraft.paidBy=u; renderAddSheet(!!addDraft.id); }
 function setSplit(s){ addDraft.splitType=s; renderAddSheet(!!addDraft.id); }
 function setRepeat(r){ addDraft.repeat=r; renderAddSheet(!!addDraft.id); }
@@ -2221,6 +2680,7 @@ function sheetSettings(){
   </div>`;
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>Data</h3>
+    <button class="btn outline block mb8" onclick="closeSheet();openImport()">📥 Import from statement (CSV)</button>
     <button class="btn outline block mb8" onclick="closeSheet();openBackups()">🛟 Backups &amp; restore</button>
     <button class="btn outline block mb8" onclick="exportData()">⬇️ Export backup (JSON)</button>
     ${TEST_MODE?`<button class="btn danger block" onclick="resetTest()">Reset test data</button>`:`<button class="btn danger block" onclick="doSignOut()">Sign out</button>`}
