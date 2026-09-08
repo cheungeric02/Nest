@@ -1767,10 +1767,20 @@ function joinShared(code){
 /* =====================================================================
    ADD / EDIT TRANSACTION  (bottom sheet)
    ===================================================================== */
+// default date for a new entry: today when you're on the current month, otherwise
+// drop into the month you're actually viewing (so adding while browsing August lands in August)
+function defaultAddDate(){
+  const nowYM=ymKey(new Date());
+  if(viewMonth===nowYM) return todayStr();
+  const today=new Date();
+  const [y,m]=viewMonth.split('-').map(Number);
+  const day=Math.min(today.getDate(), daysInMonth(y, m-1));   // keep today's day-of-month, clamped to that month
+  return viewMonth+'-'+String(day).padStart(2,'0');
+}
 function openAdd(){
   let space=activeSpace;
   if(space==='shared' && !data.shared) space='personal';
-  addDraft={id:null, space, amount:'', type:'expense', categoryId:null, date:todayStr(), vendor:'', note:'',
+  addDraft={id:null, space, amount:'', type:'expense', categoryId:null, date:defaultAddDate(), vendor:'', note:'',
             paidBy:user.uid, splitType:'equal', customMine:'', customPct:'', repeat:'none'};
   renderAddSheet();
 }
