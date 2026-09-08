@@ -308,6 +308,21 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .addhead .type-toggle button{padding:7px 11px}
 .addhead .space-chips{gap:5px;flex-wrap:nowrap}
 .addhead .space-chips .chip{padding:7px 11px;font-size:.84rem}
+.addhead-right{display:flex;align-items:center;gap:10px}
+/* ⭐ favourites quick-add opener — kept clearly apart from the Personal/Shared chooser by a divider */
+.fav-star{flex:none;display:inline-flex;align-items:center;justify-content:center;width:38px;height:34px;border:none;border-radius:var(--r-full);background:var(--surface-container-highest);font-size:1.05rem;line-height:1;cursor:pointer;padding:0;position:relative}
+.fav-star::before{content:"";position:absolute;left:-6px;top:50%;transform:translateY(-50%);height:20px;width:1px;background:var(--outline-variant)}
+.fav-star:active{background:var(--primary-container)}
+/* favourites panel rows */
+.fav-li{display:flex;align-items:center;gap:10px;padding:12px 0;border-top:1px solid var(--outline-variant)}
+.fav-li:first-of-type{border-top:0}
+.fav-li .fav-tap{flex:1;display:flex;align-items:center;gap:11px;background:none;border:none;text-align:left;padding:0;cursor:pointer;color:var(--on-surface);min-width:0}
+.fav-li .fav-ic{font-size:1.3rem;flex:none;width:26px;text-align:center}
+.fav-li .fav-body{min-width:0;flex:1}
+.fav-li .fav-nm{font-weight:600;font-size:.96rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fav-li .fav-sub{font-size:.76rem;color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fav-li .fav-amt{font-weight:800;font-size:1.05rem;flex:none;margin-left:auto}
+.fav-empty{color:var(--on-surface-variant);font-size:.9rem;text-align:center;padding:22px 8px}
 
 /* keypad */
 .keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
@@ -541,7 +556,7 @@ const BACKUP_KEEP_CLOUD = 30;        // daily cloud snapshots retained
 const BACKUP_KEEP_LOCAL = 7;         // on-device snapshots retained
 
 function blankSpace(){
-  return { categories:[], transactions:[], recurring:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
+  return { categories:[], transactions:[], recurring:[], favourites:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
 }
 
 /* =====================================================================
@@ -870,6 +885,7 @@ function normalizeSpace(sp){
     transactions: asArray(sp.transactions),
     settlements: asArray(sp.settlements),
     recurring: asArray(sp.recurring),
+    favourites: asArray(sp.favourites),
     settings: sp.settings || {savingsGoal:0, paycheck:0},
     members: sp.members || {},
     inviteCode: sp.inviteCode || null,
@@ -1822,20 +1838,28 @@ function renderAddSheet(){
   const shared=d.space==='shared';
   let members = shared? Object.entries((sp&&sp.members)||{}).map(([uidx,m])=>({uid:uidx,name:m.name||'?'})):[];
   const showChooser = d.type==='expense' && !isEdit && !isRec;  // Personal/Shared only on a fresh expense add
+  const isFresh = !isEdit && !isRec;                            // brand-new entry (not editing) — quick-add lives here
   const toggleBtns=`<button class="exp ${d.type==='expense'?'active':''}" onclick="setDraftType('expense')">Expense</button>
       <button class="inc ${d.type==='income'?'active':''}" onclick="setDraftType('income')">Income</button>`;
+  const starBtn=`<button class="fav-star" onclick="openFavourites()" title="Favourites — quick add" aria-label="Favourites">⭐</button>`;
   let html=`<div class="grabber"></div>
     <div class="between"><h2 style="margin:0">${isRec?'Edit recurring':(isEdit?'Edit':'Add')} ${d.type}</h2>
       ${isEdit?`<button class="icon-btn" onclick="deleteTx('${d.id}')" title="Delete">🗑️</button>`:''}</div>`;
   if(showChooser){
-    // type toggle + Personal/Shared chooser share one row to save vertical space
+    // type toggle + Personal/Shared chooser (+ ⭐ favourites) share one row to save vertical space
     html+=`<div class="addhead">
       <div class="type-toggle">${toggleBtns}</div>
-      <div class="chips space-chips">
-        <button class="chip ${d.space==='personal'?'active':''}" onclick="setDraftSpace('personal')">Personal</button>
-        <button class="chip ${d.space==='shared'?'active':''}" onclick="setDraftSpace('shared')">Shared</button>
+      <div class="addhead-right">
+        <div class="chips space-chips">
+          <button class="chip ${d.space==='personal'?'active':''}" onclick="setDraftSpace('personal')">Personal</button>
+          <button class="chip ${d.space==='shared'?'active':''}" onclick="setDraftSpace('shared')">Shared</button>
+        </div>
+        ${starBtn}
       </div>
     </div>${d.space==='shared'?`<div class="sub" style="margin:-4px 0 12px">Split it below — your share shows on your Personal budget too.</div>`:''}`;
+  } else if(isFresh){
+    // fresh income add — no space chooser, but keep the ⭐ favourites opener
+    html+=`<div class="addhead"><div class="type-toggle">${toggleBtns}</div>${starBtn}</div>`;
   } else {
     html+=`<div class="type-toggle">${toggleBtns}</div>`;
   }
@@ -1918,6 +1942,91 @@ function addCatInline(){
   saveSpace(addDraft.space);
   addDraft.categoryId=c.id;
   toast('Category added');
+  renderAddSheet(!!addDraft.id);
+}
+/* ⭐ Favourites — quick-add templates. Stored per-space (category ids differ per space).
+   Tapping one fills the current add form; the user reviews and hits Save. */
+function openFavourites(){
+  const sp=draftSpace();
+  const favs=asArray(sp.favourites);
+  const spaceLbl=addDraft.space==='shared'?'🤝 Shared':'👤 Personal';
+  let h=`<div class="grabber"></div>
+    <div class="between"><h2 style="margin:0">⭐ Favourites</h2>
+      <button class="btn text" onclick="renderAddSheet(!!addDraft.id)">← Back</button></div>
+    <div class="sub mb8">Quick-add for things you log often. Tap one to fill the form in <b>${spaceLbl}</b> — you review and Save.</div>`;
+  if(!favs.length){
+    h+=`<div class="fav-empty">No favourites yet.<br>Add one below for things you log all the time.</div>`;
+  } else {
+    h+=`<div class="favlist">`;
+    favs.forEach(f=>{
+      const cat=(sp.categories||[]).find(c=>c.id===f.categoryId);
+      const catnm=cat?`${cat.icon||'•'} ${cat.name}`:'No category';
+      const sub=[catnm, f.vendor].filter(Boolean).join(' · ');
+      h+=`<div class="fav-li">
+        <button class="fav-tap" onclick="applyFavourite('${f.id}')">
+          <span class="fav-ic">${f.icon||'⭐'}</span>
+          <span class="fav-body"><span class="fav-nm">${f.name}</span><span class="fav-sub">${sub}</span></span>
+          <span class="fav-amt">${fmt(f.amount)}</span>
+        </button>
+        <button class="icon-btn" onclick="delFavourite('${f.id}')" title="Delete" aria-label="Delete favourite">🗑️</button>
+      </div>`;
+    });
+    h+=`</div>`;
+  }
+  h+=`<button class="btn tonal block mt8" onclick="openFavForm()">＋ New favourite</button>`;
+  openSheetHTML(h);
+}
+function openFavForm(){
+  const sp=draftSpace();
+  const exp=(sp.categories||[]).filter(c=>c.type==='expense');
+  const inc=(sp.categories||[]).filter(c=>c.type==='income');
+  const opts=c=>`<option value="${c.id}">${c.icon||'•'} ${c.name}</option>`;
+  const preCat=addDraft.categoryId||'';
+  let sel=`<select id="fvCat" class="input">`;
+  if(exp.length) sel+=`<optgroup label="Expense">${exp.map(opts).join('')}</optgroup>`;
+  if(inc.length) sel+=`<optgroup label="Income">${inc.map(opts).join('')}</optgroup>`;
+  sel+=`</select>`;
+  let h=`<div class="grabber"></div>
+    <div class="between"><h2 style="margin:0">New favourite</h2>
+      <button class="btn text" onclick="openFavourites()">← Back</button></div>
+    <div class="sub mb8">Saves to your <b>${addDraft.space==='shared'?'🤝 Shared':'👤 Personal'}</b> favourites.</div>
+    <div class="field"><label>Name</label><input id="fvName" class="input" placeholder="e.g. Daily transit"></div>
+    <div class="field"><label>Emoji (optional)</label><input id="fvIcon" class="input" placeholder="🚌" maxlength="2"></div>
+    <div class="field"><label>Amount</label><input id="fvAmt" class="input" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00"></div>
+    <div class="field"><label>Category</label>${sel}</div>
+    <div class="field"><label>Store / Source (optional)</label><input id="fvVendor" class="input" placeholder="Optional"></div>
+    <button class="btn filled block" onclick="saveFavourite()">Save favourite</button>`;
+  openSheetHTML(h);
+  const catEl=document.getElementById('fvCat'); if(catEl && preCat) catEl.value=preCat;
+  const n=document.getElementById('fvName'); if(n) n.focus();
+}
+function saveFavourite(){
+  const name=document.getElementById('fvName').value.trim(); if(!name){ toast('Name required'); return; }
+  const amt=parseFloat(document.getElementById('fvAmt').value); if(!isFinite(amt)||amt<=0){ toast('Enter an amount'); return; }
+  const catId=document.getElementById('fvCat').value; if(!catId){ toast('Pick a category'); return; }
+  const sp=draftSpace();
+  const f={id:uid(), name, icon:(document.getElementById('fvIcon').value.trim()||'⭐'),
+           amount:Math.round(amt*100)/100, categoryId:catId, vendor:document.getElementById('fvVendor').value.trim()};
+  sp.favourites=asArray(sp.favourites); sp.favourites.push(f);
+  saveSpace(addDraft.space);
+  toast('Favourite saved');
+  openFavourites();
+}
+function delFavourite(id){
+  const sp=draftSpace();
+  sp.favourites=asArray(sp.favourites).filter(f=>f.id!==id);
+  saveSpace(addDraft.space);
+  openFavourites();
+}
+function applyFavourite(id){
+  const sp=draftSpace();
+  const f=asArray(sp.favourites).find(x=>x.id===id); if(!f) return;
+  const cat=(sp.categories||[]).find(c=>c.id===f.categoryId);
+  if(cat) addDraft.type=cat.type;              // favourite may target an income category
+  addDraft.amount=String(f.amount||'');
+  addDraft.categoryId=f.categoryId;
+  addDraft.vendor=f.vendor||'';
+  toast('Filled from ⭐ '+f.name);
   renderAddSheet(!!addDraft.id);
 }
 function setDraftPayer(u){ addDraft.paidBy=u; renderAddSheet(!!addDraft.id); }
