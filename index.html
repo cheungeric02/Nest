@@ -341,6 +341,11 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .imp-bucket-h.imp-clickable{cursor:pointer}
 .imp-count{background:var(--surface-container-highest);color:var(--on-surface-variant);font-size:.78rem;font-weight:700;padding:1px 9px;border-radius:var(--r-full)}
 .imp-caret{margin-left:auto;color:var(--on-surface-variant);font-size:.85rem}
+.imp-selbar{display:flex;align-items:center;gap:8px;margin:0 0 4px}
+.imp-selcount{font-size:.8rem;color:var(--on-surface-variant);margin-right:auto}
+.imp-selbtn{border:none;background:var(--surface-container-highest);color:var(--primary);font-size:.8rem;font-weight:700;padding:6px 12px;border-radius:var(--r-full);cursor:pointer}
+.imp-selbtn:disabled{color:var(--on-surface-variant);opacity:.5;cursor:default}
+.imp-selbtn:active:not(:disabled){background:var(--primary-container)}
 .imp-row{display:flex;gap:11px;padding:11px 0;border-top:1px solid var(--outline-variant)}
 .imp-row:first-of-type{border-top:0}
 .imp-row.imp-off{opacity:.42}
@@ -2266,7 +2271,7 @@ function importAutoMap(){
   const mode=(debit>=0&&credit>=0)?'debitcredit':'single';
   st.map={ date, desc, amount, debit, credit, mode, signExpense:true };
 }
-function renderImportMap(){
+function renderImportMap(keep){
   const st=importState;
   const colOpts=(sel,allowNone)=>{
     let o=allowNone?'<option value="-1">— none —</option>':'';
@@ -2306,7 +2311,7 @@ function renderImportMap(){
   h+=`</div>`;
   h+=`<button class="btn block" onclick="importToReview()">Review ${importBuildParsed(true).length} transactions</button>
     <button class="btn text block" onclick="openImport()">← Back</button>`;
-  openSheetHTML(h);
+  (keep?openSheetHTMLKeep:openSheetHTML)(h);
 }
 function importMapChange(){
   const st=importState, m=st.map;
@@ -2315,7 +2320,7 @@ function importMapChange(){
   m.date=val('mpDate'); m.desc=val('mpDesc');
   if(m.mode==='single'){ m.amount=val('mpAmount'); m.signExpense=((document.getElementById('mpSign')||{}).value!=='0'); }
   else { m.debit=val('mpDebit'); m.credit=val('mpCredit'); }
-  renderImportMap();
+  renderImportMap(true);
 }
 function importBuildParsed(quiet){
   const st=importState, m=st.map, out=[];
@@ -2384,7 +2389,7 @@ function importToReview(){
     showMatched:false, showNest:false };
   renderImportReview();
 }
-function renderImportReview(){
+function renderImportReview(keep){
   const rv=importState.review, base=data.personal;
   const nInc=rv.rows.filter(r=>r.include).length;
   let h=`<div class="grabber"></div><h2>Review &amp; import</h2>
@@ -2394,6 +2399,10 @@ function renderImportReview(){
   h+=`<div class="imp-bucket-h">➕ Not in Nest — add these <span class="imp-count">${rv.rows.length}</span></div>`;
   if(!rv.rows.length){
     h+=`<div class="sub" style="padding:6px 2px 10px">Nothing missing — your statement is fully logged. 🎉</div>`;
+  } else {
+    h+=`<div class="imp-selbar"><span class="imp-selcount">${nInc} of ${rv.rows.length} selected</span>
+      <button class="imp-selbtn" onclick="importSelectAll(true)" ${nInc===rv.rows.length?'disabled':''}>Select all</button>
+      <button class="imp-selbtn" onclick="importSelectAll(false)" ${nInc===0?'disabled':''}>Deselect all</button></div>`;
   }
   const sharedOK = !!data.shared;
   rv.rows.forEach((r,i)=>{
@@ -2436,12 +2445,13 @@ function renderImportReview(){
 
   h+=`<button class="btn block" style="margin-top:16px" onclick="importCommit()" ${nInc?'':'disabled'}>Import ${nInc} transaction${nInc===1?'':'s'}</button>
     <button class="btn text block" onclick="renderImportMap()">← Back to columns</button>`;
-  openSheetHTML(h);
+  (keep?openSheetHTMLKeep:openSheetHTML)(h);
 }
-function importToggleRow(i){ const r=importState.review.rows[i]; r.include=!r.include; renderImportReview(); }
-function importToggle(k){ importState.review[k]=!importState.review[k]; renderImportReview(); }
+function importToggleRow(i){ const r=importState.review.rows[i]; r.include=!r.include; renderImportReview(true); }
+function importToggle(k){ importState.review[k]=!importState.review[k]; renderImportReview(true); }
 function importSetCat(i,v){ importState.review.rows[i].categoryId=v; }
-function importToggleShared(i){ importState.review.rows[i].shared=!importState.review.rows[i].shared; renderImportReview(); }
+function importToggleShared(i){ importState.review.rows[i].shared=!importState.review.rows[i].shared; renderImportReview(true); }
+function importSelectAll(v){ importState.review.rows.forEach(r=>r.include=v); renderImportReview(true); }
 
 function importCommit(){
   const rv=importState.review;
@@ -2787,6 +2797,8 @@ function doSignOut(){ if(auth) auth.signOut(); closeSheet(); }
    SHEET plumbing
    ===================================================================== */
 function openSheetHTML(html){ const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.scrollTop=0; s.innerHTML=html; s.classList.add('show'); document.getElementById('scrim').classList.add('show'); }
+// Re-render the open sheet WITHOUT jumping back to the top (for in-place toggles).
+function openSheetHTMLKeep(html){ const s=document.getElementById('sheet'); const keep=(s&&s.classList.contains('show'))?s.scrollTop:0; openSheetHTML(html); const s2=document.getElementById('sheet'); if(s2&&keep) s2.scrollTop=keep; }
 function closeSheet(){ const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.classList.remove('show'); const sc=document.getElementById('scrim'); sc.style.opacity=''; sc.classList.remove('show'); }
 
 /* Phone back-gesture handling: a swipe-back first closes any open sheet
