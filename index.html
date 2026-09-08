@@ -196,6 +196,21 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .pace-dot.inc{background:var(--primary-container);background-image:repeating-linear-gradient(135deg,transparent 0 3px,color-mix(in srgb,var(--primary) 55%,transparent) 3px 6px)}
 .pace-dot.spend{background:var(--surface-container-highest);background-image:repeating-linear-gradient(135deg,transparent 0 3px,color-mix(in srgb,var(--on-surface) 18%,transparent) 3px 6px)}
 
+/* savings pools (sinking funds) */
+.pool-row{padding:12px 0;border-top:1px solid var(--outline-variant)}
+.pool-row:first-of-type{border-top:0;padding-top:2px}
+.pool-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.pool-nm{font-weight:600;font-size:.98rem}
+.pool-bal{font-size:1.45rem;font-weight:800;color:var(--primary);line-height:1}
+.pool-bal.neg{color:var(--error)}
+.pool-track{position:relative;height:9px;border-radius:var(--r-full);overflow:hidden;background:var(--primary-container);margin:9px 0 7px}
+.pool-track .pool-spent{position:absolute;top:0;left:0;height:100%;background:var(--surface-container-highest);background-image:repeating-linear-gradient(135deg,transparent 0 4px,color-mix(in srgb,var(--on-surface) 14%,transparent) 4px 8px)}
+.pool-track.over{background:var(--error)}
+.pool-meta{display:flex;justify-content:space-between;font-size:.76rem;color:var(--on-surface-variant)}
+.pool-badge{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.02em;color:var(--primary);background:var(--primary-container);border-radius:var(--r-full);padding:2px 8px;vertical-align:middle;margin-left:4px}
+.field label.switch-row{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;font-size:.92rem;color:var(--on-surface);font-weight:600;margin-bottom:0}
+.switch-row input[type=checkbox]{width:22px;height:22px;accent-color:var(--primary);flex:none}
+
 /* plan income-split donut */
 .pie-wrap{display:flex;flex-direction:column;align-items:center;gap:16px}
 .pie-svg{width:180px;max-width:60%;height:auto}
@@ -1041,6 +1056,31 @@ function incomeBasis(sp,ym){ // salary if set, else this month's income, fallbac
 }
 function effectiveTarget(sp,cat,ym){ if(cat.useIncomePct){ return (cat.targetPct/100)*incomeBasis(sp,ym); } return +cat.target||0; }
 
+/* ---- savings pools (sinking funds evaluated on a running/YTD basis, not monthly) ----
+   A pool carries a balance across months and years:
+     balance = starting seed + (monthly set-aside × months since it started) − spent since it started
+   The set-aside reuses the category's fixed-$ target. */
+function monthsSinceInclusive(startYM, endYM){
+  const [sy,sm]=startYM.split('-').map(Number), [ey,em]=endYM.split('-').map(Number);
+  return Math.max(0,(ey-sy)*12+(em-sm)+1);
+}
+function poolStats(sp,cat){
+  const nowYM=ymKey(new Date());
+  const start=cat.poolStart||nowYM;
+  const months=monthsSinceInclusive(start, nowYM<start?start:nowYM);
+  const setAside=+cat.target||0;
+  const seed=+cat.poolSeed||0;
+  const accrued=seed+setAside*months;
+  let spent=0, spentYTD=0; const yr=String(new Date().getFullYear());
+  (sp.transactions||[]).forEach(t=>{
+    if(t.type==='expense'&&t.categoryId===cat.id){ const m=txMonth(t);
+      if(m&&m>=start) spent+=(+t.amount||0);
+      if(m&&m.slice(0,4)===yr) spentYTD+=(+t.amount||0);
+    }
+  });
+  return {start,months,setAside,seed,accrued,spent,spentYTD,balance:accrued-spent};
+}
+
 /* settle-up between the two members (shared).
    net > 0  => partner owes you;  net < 0 => you owe partner. */
 function settleBalance(sp){
@@ -1125,7 +1165,7 @@ function viewHome(){
   //   net saved so far  + income still to come  − budget still to spend  − savings goal
   let remainingBudget = 0, expectedIncome = 0;
   if(isCur && !remind){
-    (sp.categories||[]).filter(c=>c.type==='expense').forEach(c=>{
+    (sp.categories||[]).filter(c=>c.type==='expense'&&!c.pool).forEach(c=>{
       const t=effectiveTarget(sp,c,viewMonth);
       if(t>0) remainingBudget += Math.max(0, t - spentByCat(mtx,c.id));
     });
@@ -1155,8 +1195,8 @@ function viewHome(){
   // 50/30/20
   h+=view503020(sp,mtx,income);
 
-  // budget vs actual
-  const exCats=(sp.categories||[]).filter(c=>c.type==='expense');
+  // budget vs actual (pools are running funds, not monthly budgets — excluded here)
+  const exCats=(sp.categories||[]).filter(c=>c.type==='expense'&&!c.pool);
   const withTargets=exCats.filter(c=>effectiveTarget(sp,c,viewMonth)>0)
     .map(c=>({c,spent:spentByCat(mtx,c.id),tgt:effectiveTarget(sp,c,viewMonth)}))
     .sort((a,b)=> (b.spent/b.tgt)-(a.spent/a.tgt));
@@ -1451,6 +1491,20 @@ function viewPlan(){
       ${mo>0?`<button class="btn text" style="padding:4px 10px" onclick="applyAllRec()">✨ Apply all</button>`:''}</div>
     <div class="sub mb8">Set a monthly target per category. Toggle <b>%</b> to budget as a percentage of income instead.${mo>0?' Tap <b>Use</b> to accept a recommendation.':''}</div>`;
   exCats.forEach(c=>{
+    if(c.pool){
+      // sinking fund: a fixed monthly set-aside, evaluated as a running balance (see Insights)
+      const ps=poolStats(sp,c);
+      h+=`<div class="bar-row" style="margin-bottom:16px">
+        <div class="between">
+          <span style="font-weight:600">${c.icon||'•'} ${c.name} <span class="pool-badge">🏦 POOL</span></span>
+        </div>
+        <div class="flex mt8">
+          <span class="muted">${CUR_SYMBOL}</span><input class="input" type="number" inputmode="decimal" style="max-width:140px" value="${c.target||''}" placeholder="0" onchange="setCatTarget('${c.id}','amt',this.value)"><span class="muted">set aside / mo</span>
+        </div>
+        <div class="pct-income">Fund balance now · <b>${ps.balance<0?'−':''}${fmt0(ps.balance)}</b></div>
+      </div>`;
+      return;
+    }
     const useP=c.useIncomePct;
     const rec = (mo>0 && REC_PCT[c.name]!=null) ? Math.round(mo*REC_PCT[c.name]/100) : 0;
     h+=`<div class="bar-row" style="margin-bottom:16px">
@@ -1602,6 +1656,31 @@ function insightsTrendChart(rows){
   return `<svg class="cmp-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Income and expenses over the last six months">${grid}${bars}</svg>`;
 }
 
+// Savings pools — running sinking funds shown "as of now", not scoped to the viewed month.
+function poolsCard(sp){
+  const pools=(sp.categories||[]).filter(c=>c.type==='expense'&&c.pool);
+  if(!pools.length) return '';
+  let h=`<div class="card"><h3>🏦 Savings pools</h3>
+    <div class="sub mb8">Sinking funds you build over time — set aside monthly, spend whenever. Balances carry across months and years.</div>`;
+  pools.forEach(c=>{
+    const s=poolStats(sp,c);
+    const over=s.balance<-0.005;
+    const spentPct=s.accrued>0?Math.max(0,Math.min(100,(s.spent/s.accrued)*100)):(s.spent>0?100:0);
+    h+=`<div class="pool-row">
+      <div class="pool-head">
+        <span class="pool-nm">${c.icon||'•'} ${c.name}</span>
+        <span class="pool-bal ${over?'neg':''}">${over?'−':''}${fmt0(s.balance)}</span>
+      </div>
+      <div class="pool-track ${over?'over':''}"><div class="pool-spent" style="width:${spentPct.toFixed(1)}%"></div></div>
+      <div class="pool-meta">
+        <span>${fmt0(s.setAside)}/mo set aside</span>
+        <span>${fmt0(s.spent)} spent of ${fmt0(s.accrued)}</span>
+      </div>
+    </div>`;
+  });
+  h+=`</div>`;
+  return h;
+}
 function viewInsights(){
   const sp=curSpace();
   const months=monthsSpan(sp);
@@ -1613,6 +1692,8 @@ function viewInsights(){
     ${insightsTrendChart(rows)}
     <div class="tri-legend mt8"><span class="k"><span class="dot" style="background:var(--success)"></span>Income</span><span class="k"><span class="dot" style="background:var(--error)"></span>Expenses</span></div>
   </div>`;
+
+  h+=poolsCard(sp);
 
   // category breakdown this month
   const mtx=effMonthTx(sp,viewMonth).filter(t=>t.type==='expense');
@@ -2036,7 +2117,7 @@ function sheetManageCats(){
     cats.forEach(c=>{
       h+=`<div class="tx">
         <div class="ic">${c.icon||'•'}</div>
-        <div class="mid"><div class="t1">${c.name}</div>
+        <div class="mid"><div class="t1">${c.name}${c.pool?' <span class="pool-badge">🏦 POOL</span>':''}</div>
           ${type==='expense'?`<div class="t2">
             <select onchange="setCatGroup('${c.id}',this.value)" style="border:none;background:transparent;color:var(--on-surface-variant);font-size:.8rem">
               ${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${c.group===k?'selected':''}>${v}</option>`).join('')}
@@ -2069,7 +2150,17 @@ function sheetEditCat(id){
   return `<div class="grabber"></div><h2>Edit category</h2>
     <div class="field"><label>Name</label><input id="ecName" class="input" value="${(c.name||'').replace(/"/g,'&quot;')}" placeholder="e.g. Pet care"></div>
     <div class="field"><label>Emoji</label><input id="ecIcon" class="input" value="${(c.icon||'').replace(/"/g,'&quot;')}" placeholder="🐾" maxlength="2"></div>
-    ${c.type==='expense'?`<div class="field"><label>Group</label><select id="ecGroup" class="input">${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${c.group===k?'selected':''}>${v}</option>`).join('')}</select></div>`:''}
+    ${c.type==='expense'?`<div class="field"><label>Group</label><select id="ecGroup" class="input">${Object.entries(GROUPS).map(([k,v])=>`<option value="${k}" ${c.group===k?'selected':''}>${v}</option>`).join('')}</select></div>
+    <div class="field"><label class="switch-row"><span>🏦 Savings pool</span>
+      <input type="checkbox" id="ecPool" ${c.pool?'checked':''} onchange="document.getElementById('ecPoolFields').hidden=!this.checked"></label>
+      <div class="sub" style="margin-top:6px">A sinking fund like travel — set aside monthly, spend whenever. The balance carries over across months and years, and it's tracked in Insights instead of the monthly budget.</div>
+    </div>
+    <div id="ecPoolFields" ${c.pool?'':'hidden'}>
+      <div class="field"><label>Starting balance already saved</label>
+        <div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="ecPoolSeed" class="input" type="number" inputmode="decimal" value="${c.poolSeed!=null&&c.poolSeed!==0?c.poolSeed:''}" placeholder="0"></div>
+        <div class="sub" style="margin-top:6px">What's already in this fund today. The monthly set-aside is the category's amount in Plan.</div>
+      </div>
+    </div>`:''}
     <button class="btn filled block" onclick="saveCatEdit('${id}')">Save changes</button>`;
 }
 function saveCatEdit(id){
@@ -2077,6 +2168,14 @@ function saveCatEdit(id){
   const name=document.getElementById('ecName').value.trim(); if(!name){ toast('Name required'); return; }
   c.name=name; c.icon=document.getElementById('ecIcon').value.trim()||'•';
   const g=document.getElementById('ecGroup'); if(g) c.group=g.value;
+  const poolCb=document.getElementById('ecPool');
+  if(poolCb){
+    if(poolCb.checked){
+      c.pool=true; c.useIncomePct=false;                       // pools use a fixed $ set-aside
+      c.poolSeed=+((document.getElementById('ecPoolSeed')||{}).value)||0;
+      if(!c.poolStart) c.poolStart=ymKey(new Date());          // begin accruing this month
+    } else { c.pool=false; }                                   // keep seed/start so re-enabling resumes
+  }
   saveSpace(activeSpace); openSheet('managecats'); render(); toast('Category updated');
 }
 function setCatGroup(id,g){ const c=catById(curSpace(),id); if(c){c.group=g; saveSpace(activeSpace);} }
