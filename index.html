@@ -1802,7 +1802,7 @@ function openAdd(){
 }
 function openEdit(id){
   const sp=curSpace(); const t=(sp.transactions||[]).find(x=>x.id===id); if(!t) return;
-  addDraft={id:t.id, space:activeSpace, amount:String(t.amount), type:t.type, categoryId:t.categoryId, date:t.date, vendor:t.vendor||'', note:t.note||'',
+  addDraft={id:t.id, space:activeSpace, amount:trimNum(t.amount), type:t.type, categoryId:t.categoryId, date:t.date, vendor:t.vendor||'', note:t.note||'',
             paidBy:t.paidBy||user.uid, splitType:(t.split&&t.split.type)||'equal',
             customMine:t.split&&t.split.shares?String(t.split.shares[user.uid]??''):'',
             customPct:(t.split&&t.split.pct!=null)?String(t.split.pct):'', repeat:'none'};
@@ -1810,7 +1810,7 @@ function openEdit(id){
 }
 function openEditRecurring(id){
   const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id); if(!r) return;
-  addDraft={id:null, recId:r.id, space:activeSpace, amount:String(r.amount), type:r.type, categoryId:r.categoryId,
+  addDraft={id:null, recId:r.id, space:activeSpace, amount:trimNum(r.amount), type:r.type, categoryId:r.categoryId,
             date:r.anchor, vendor:r.vendor||'', note:r.note||'',
             paidBy:r.paidBy||user.uid, splitType:r.splitType||'equal',
             customMine:(r.customMine!=null?String(r.customMine):''), customPct:(r.customPct!=null?String(r.customPct):''),
@@ -2023,7 +2023,7 @@ function applyFavourite(id){
   const f=asArray(sp.favourites).find(x=>x.id===id); if(!f) return;
   const cat=(sp.categories||[]).find(c=>c.id===f.categoryId);
   if(cat) addDraft.type=cat.type;              // favourite may target an income category
-  addDraft.amount=String(f.amount||'');
+  addDraft.amount=trimNum(f.amount);
   addDraft.categoryId=f.categoryId;
   addDraft.vendor=f.vendor||'';
   toast('Filled from ⭐ '+f.name);
@@ -2075,7 +2075,8 @@ function evalExpr(str){
   for(let i=1;i<p.length;i+=2){ const op=p[i],b=p[i+1]; if(op==='+')res+=b; else if(op==='-')res-=b; }
   return res;
 }
-function trimNum(n){ n=Math.round(n*100)/100; return String(n); }
+// Amount-buffer display: whole numbers show plain (6), fractionals always show 2 dp (6.60, not 6.6)
+function trimNum(n){ n=Math.round((+n||0)*100)/100; return Number.isInteger(n) ? String(n) : n.toFixed(2); }
 function renderAmt(){
   const a=addDraft.amount||'';
   const el=document.getElementById('amtNum');
