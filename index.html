@@ -1452,7 +1452,7 @@ function planPieChart(sp, income){
   });
   segs.sort((a,b)=> b.val-a.val); // biggest share first (matches the budget list order)
   if(goal>0.005) segs.push({name:'Savings goal', icon:'🎯', val:goal});
-  if(!segs.length) return `<div class="sub">Set category budgets or a savings goal to see how your income splits.</div>`;
+  if(!segs.length) return `<div class="sub">Set category budgets or a savings goal to see how it splits.</div>`;
   segs.forEach((s,i)=>{ s.color = PIE_COLORS[i%PIE_COLORS.length]; });
 
   const alloc=segs.reduce((a,s)=>a+s.val,0);
@@ -1487,7 +1487,7 @@ function planPieChart(sp, income){
 
   const note = overAlloc
     ? `<div class="sub" style="margin-top:4px;color:var(--error)">⚠️ Your budgets + savings goal total ${fmt0(alloc)} — that's ${Math.round(alloc/income*100)}% of your ${fmt0(income)} income. Trim somewhere to stay within 100%.</div>`
-    : income<=0 ? `<div class="sub" style="margin-top:4px">Add your income above to see each slice as a % of income.</div>` : '';
+    : (income<=0 && activeSpace!=='shared') ? `<div class="sub" style="margin-top:4px">Add your income above to see each slice as a % of income.</div>` : '';
 
   return `<div class="pie-wrap">${donut}<div class="pie-legend">${legend}</div></div>${note}`;
 }
@@ -1588,9 +1588,12 @@ function viewPlan(){
   });
   h+=`<button class="btn text" onclick="openSheet('managecats')">✏️ Manage categories & groups</button></div>`;
 
-  // income split donut — visual share of total income per category + savings goal
-  h+=`<div class="card"><h3>🥧 Where your income goes</h3>
-    <div class="sub mb8">Each budget and your savings goal as a share of your total monthly income (current pay + what's still to come).</div>
+  // split donut — share of income per category (personal), or share of total budget when there's no income (shared)
+  const hasInc = incBasis>0;
+  h+=`<div class="card"><h3>${hasInc?'🥧 Where your income goes':'🥧 How your budget splits'}</h3>
+    <div class="sub mb8">${hasInc
+      ? `Each budget and your savings goal as a share of your total monthly income (current pay + what's still to come).`
+      : `Each budget and your savings goal as a share of your total planned spending.`}</div>
     ${planPieChart(sp, incBasis)}</div>`;
   return h;
 }
