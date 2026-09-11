@@ -167,6 +167,20 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 /* settle card */
 .settle{background:var(--tertiary-container);color:var(--on-tertiary-container)}
 .settle .big{font-size:1.5rem;font-weight:800;margin:4px 0}
+.settle .sub{color:var(--on-tertiary-container);opacity:.85}
+/* settle-up sheet: direction picker, live preview, history */
+.settle-dir{display:flex;align-items:center;justify-content:center;gap:10px;margin:8px 0 6px}
+.settle-who{flex:1;text-align:center;background:var(--surface-container-high);color:var(--on-surface);padding:13px 8px;border-radius:var(--r-md);font-weight:700;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.settle-swap{border:none;background:var(--primary);color:var(--on-primary);min-width:42px;height:42px;border-radius:var(--r-full);font-size:1.15rem;font-weight:700;cursor:pointer;flex:none}
+.settle-swap:active{filter:brightness(.9)}
+.settle-prev{min-height:20px;font-size:.9rem;color:var(--on-surface-variant);margin:2px 0 14px;text-align:center}
+.settle-prev b{color:var(--on-surface)}
+.settle-hist{border-top:1px solid var(--outline-variant);margin-top:18px;padding-top:2px}
+.settle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 2px;border-bottom:1px solid var(--outline-variant)}
+.settle-row:last-child{border-bottom:none}
+.settle-row .sub{font-size:.74rem;margin-top:2px}
+.settle-del{border:none;background:none;font-size:1.05rem;cursor:pointer;opacity:.6;padding:6px;flex:none}
+.settle-del:active{opacity:1}
 
 /* leftover / month-end nudge */
 .leftover-remind{background:var(--primary-container);color:var(--on-primary-container)}
@@ -1210,15 +1224,17 @@ function viewHome(){
 
   // settle card (shared)
   if(activeSpace==='shared'){ const bal=settleBalance(sp); if(bal){
-    const owe = bal.net>0.005, owed = bal.net<-0.005;
+    const partnerOwesYou = bal.net>0.005;
+    const hasBal = Math.abs(bal.net)>=0.01;
+    const nSet = (sp.settlements||[]).length;
     h+=`<div class="card settle">
       <h3>🤝 Settle up</h3>
-      ${Math.abs(bal.net)<0.01
+      ${!hasBal
         ? `<div class="big">All settled 🎉</div><div class="sub">You're even with ${bal.otherName}.</div>`
-        : owe
+        : partnerOwesYou
           ? `<div class="big">${bal.otherName} owes you ${fmt(bal.net)}</div>`
           : `<div class="big">You owe ${bal.otherName} ${fmt(-bal.net)}</div>`}
-      ${Math.abs(bal.net)>=0.01?`<button class="btn tonal mt8" onclick="openSettle()">Record a settle-up</button>`:''}
+      ${(hasBal||nSet)?`<button class="btn tonal mt8" onclick="openSettle()">${hasBal?'Record a settle-up':'Settle-up history'}</button>`:''}
     </div>`;
   }}
 
@@ -2749,22 +2765,89 @@ function deleteTx(id){
 /* =====================================================================
    SETTLE UP
    ===================================================================== */
+// true = you pay partner; false = partner pays you.
+let _settleYouPay = true;
 function openSettle(){
   const sp=curSpace(); const bal=settleBalance(sp); if(!bal) return;
-  const youOwe = bal.net<0; const amt=Math.abs(bal.net);
-  const html=`<div class="grabber"></div><h2>Record a settle-up</h2>
-    <p class="muted">${youOwe?`You pay ${bal.otherName}`:`${bal.otherName} pays you`} <b>${fmt(amt)}</b> to even out.</p>
-    <div class="field"><label>Amount</label><div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="settleAmt" class="input" type="number" inputmode="decimal" value="${amt.toFixed(2)}"></div></div>
-    <button class="btn filled block" onclick="recordSettle(${youOwe})">Mark as paid</button>`;
-  openSheetHTML(html);
+  // default direction: whoever owes pays (you owe -> you pay; partner owes you -> they pay).
+  _settleYouPay = bal.net<=0;
+  renderSettleSheet(true);
 }
-function recordSettle(youOwe){
-  const sp=curSpace(); const bal=settleBalance(sp);
-  const amt=parseFloat(document.getElementById('settleAmt').value)||0; if(amt<=0){toast('Enter amount');return;}
+function settleSwap(){ _settleYouPay=!_settleYouPay; renderSettleSheet(false); }
+function settleEvenAmt(bal){ return _settleYouPay ? Math.max(0,-bal.net) : Math.max(0,bal.net); }
+function settleFull(){
+  const bal=settleBalance(curSpace()); if(!bal) return;
+  const el=document.getElementById('settleAmt'); if(el){ el.value=settleEvenAmt(bal).toFixed(2); settlePreview(); }
+}
+function fmtDay(ds){ return ds? new Date(ds+'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''; }
+function renderSettleSheet(resetAmt){
+  const sp=curSpace(); const bal=settleBalance(sp); if(!bal){ closeSheet(); return; }
+  const payer=_settleYouPay?'You':bal.otherName;
+  const payee=_settleYouPay?bal.otherName:'You';
+  const even=settleEvenAmt(bal);
+  const cur = resetAmt ? even : (parseFloat((document.getElementById('settleAmt')||{}).value)||0);
+  const bLine = Math.abs(bal.net)<0.01 ? `You're all settled with ${bal.otherName}.`
+     : bal.net>0 ? `${bal.otherName} currently owes you <b>${fmt(bal.net)}</b>.`
+     : `You currently owe ${bal.otherName} <b>${fmt(-bal.net)}</b>.`;
+  const sets=(sp.settlements||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  let hist='';
+  if(sets.length){
+    hist=`<div class="settle-hist"><div class="sub" style="margin:16px 0 4px;font-weight:700;color:var(--on-surface)">Past settle-ups</div>`;
+    sets.forEach(s=>{
+      const youPaid = s.from===user.uid;
+      const nm=(sp.members[youPaid?s.to:s.from]&&sp.members[youPaid?s.to:s.from].name)||bal.otherName;
+      const dir = youPaid?`You paid ${nm}`:`${nm} paid you`;
+      hist+=`<div class="settle-row"><div><b>${fmt(+s.amount||0)}</b> <span class="muted">· ${dir}</span><div class="sub">${fmtDay(s.date)}</div></div>
+        <button class="settle-del" onclick="deleteSettle('${s.id}')" title="Delete this settle-up">🗑️</button></div>`;
+    });
+    hist+=`</div>`;
+  }
+  const html=`<div class="grabber"></div><h2>Record a settle-up</h2>
+    <p class="muted">${bLine} Log the whole amount, or just a portion.</p>
+    <div class="settle-dir">
+      <span class="settle-who">${payer}</span>
+      <button class="settle-swap" onclick="settleSwap()" title="Swap who's paying">→</button>
+      <span class="settle-who">${payee}</span>
+    </div>
+    <div class="sub" style="text-align:center;margin:0 0 14px">${_settleYouPay?'You transfer':payer+' transfers'} money to ${payee} · tap → to swap</div>
+    <div class="field"><label>Transfer amount</label>
+      <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
+        <input id="settleAmt" class="input" type="number" inputmode="decimal" step="0.01" value="${cur>0?cur.toFixed(2):''}" oninput="settlePreview()" placeholder="0.00"></div>
+      ${even>0.005?`<button class="btn text" style="padding:8px 0;font-size:.82rem" onclick="settleFull()">Pay in full · ${fmt(even)}</button>`:''}
+    </div>
+    <div id="settlePrev" class="settle-prev"></div>
+    <button class="btn filled block" onclick="recordSettle()">Record transfer</button>
+    ${hist}`;
+  openSheetHTML(html);
+  settlePreview();
+}
+function settlePreview(){
+  const bal=settleBalance(curSpace()); if(!bal) return;
+  const el=document.getElementById('settlePrev'); if(!el) return;
+  const amt=parseFloat((document.getElementById('settleAmt')||{}).value)||0;
+  const newNet = _settleYouPay ? bal.net+amt : bal.net-amt;
+  let msg='';
+  if(amt>0){
+    if(Math.abs(newNet)<0.01) msg=`✅ After this, you'll be all settled.`;
+    else if(newNet>0) msg=`After this, ${bal.otherName} will owe you <b>${fmt(newNet)}</b>.`;
+    else msg=`After this, you'll owe ${bal.otherName} <b>${fmt(-newNet)}</b>.`;
+  }
+  el.innerHTML=msg;
+}
+function recordSettle(){
+  const sp=curSpace(); const bal=settleBalance(sp); if(!bal) return;
+  const amt=parseFloat(document.getElementById('settleAmt').value)||0; if(amt<=0){toast('Enter an amount');return;}
   sp.settlements=asArray(sp.settlements);
-  sp.settlements.push({id:uid(),date:todayStr(),
-    from: youOwe?user.uid:bal.other, to: youOwe?bal.other:user.uid, amount:amt});
-  saveSpace('shared'); closeSheet(); render(); toast('Settled '+fmt(amt));
+  sp.settlements.push({id:uid(), date:todayStr(),
+    from:_settleYouPay?user.uid:bal.other, to:_settleYouPay?bal.other:user.uid, amount:Math.round(amt*100)/100});
+  saveSpace('shared'); render();
+  toast('Recorded '+fmt(amt));
+  renderSettleSheet(true); // keep sheet open, refreshed with the new balance + history
+}
+function deleteSettle(id){
+  const sp=curSpace(); if(!sp) return;
+  sp.settlements=asArray(sp.settlements).filter(s=>s.id!==id);
+  saveSpace('shared'); render(); renderSettleSheet(true); toast('Removed');
 }
 
 /* =====================================================================
