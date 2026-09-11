@@ -1296,6 +1296,12 @@ function viewHome(){
       <div class="sub">${isPast?'This month wrapped up and you':'The month is almost over — you'} came in under budget after spending${goalNote}. Move it into savings or investments so it doesn't get spent next month.</div>
       <button class="btn filled block mt8" onclick="ackLeftover('${viewMonth}')">✓ I moved it to savings</button>
     </div>`;
+  } else if(isCur && activeSpace==='shared'){
+    // Shared is for tracking spending together, not saving — show spend-vs-budget pace,
+    // never a savings "shortfall" (there's no income or savings goal here).
+    let tb=0;
+    (sp.categories||[]).filter(c=>c.type==='expense'&&!c.pool).forEach(c=>{ tb+=effectiveTarget(sp,c,viewMonth); });
+    if(tb>0.5) h+=spendPaceCard(expense, tb);
   } else if(isCur && !remind && (income>0 || expectedIncome>0 || remainingBudget>0)){
     h+=onPaceCard(savings, expectedIncome, remainingBudget);
   }
@@ -1472,6 +1478,57 @@ function onPaceCard(savings, expectedIncome, remainingBudget){
       <div class="month">${monLbl} · day ${t.getDate()}<br>of ${dim}</div>
     </div>
     ${bar}${brk}${list}
+  </div>`;
+}
+
+// Home "on pace" card for the SHARED space: purely spend-vs-budget tracking —
+// no income, no savings, so never a "shortfall". Projects month-end spend at
+// the current daily pace and compares it to the month's total budget.
+function spendPaceCard(spent, budget){
+  spent  = Math.round((spent||0)*100)/100;
+  budget = Math.round((budget||0)*100)/100;
+
+  const t=new Date();
+  const dim=new Date(t.getFullYear(), t.getMonth()+1, 0).getDate();
+  const day=t.getDate();
+  const monLbl=t.toLocaleString('en-US',{month:'short'});
+  const frac=Math.min(1, day/dim);
+  const proj=frac>0 ? Math.round((spent/frac)*100)/100 : spent;
+
+  const projExtra=Math.max(0, Math.round((proj-spent)*100)/100);   // still to come at this pace
+  const scale=Math.max(budget, proj, 1);
+  const pct=v=>Math.max(0, Math.min(100, (v/scale)*100));
+  const spentW=pct(spent), extraW=pct(projExtra), budgetW=pct(budget);
+
+  const over=Math.round((proj-budget)*100)/100;
+  const heroCls = over>0.5 ? 'neg' : (over<-0.5 ? '' : 'muted');
+  const cap = over>0.5 ? 'projected to go over budget'
+            : (over<-0.5 ? 'projected spend this month'
+                         : 'on pace to use your full budget');
+
+  let bar=`<div class="pace-bar">`;
+  if(spentW>0.3) bar+=`<div class="seg s-net" style="width:${spentW.toFixed(1)}%"></div>`;
+  if(extraW>0.3) bar+=`<div class="seg s-inc" style="width:${extraW.toFixed(1)}%"></div>`;
+  if(budgetW>1 && budgetW<99) bar+=`<div class="divider" style="left:${budgetW.toFixed(1)}%"></div>`;
+  bar+=`</div>`;
+
+  const remaining=Math.round((budget-spent)*100)/100;
+  let list=`<div class="pace-list">`;
+  list+=`<div class="pace-li"><span class="nm"><span class="pace-dot net"></span>Spent so far</span><span class="v">${fmt0(spent)}</span></div>`;
+  if(projExtra>0.5) list+=`<div class="pace-li"><span class="nm"><span class="pace-dot inc"></span>Still to come at this pace</span><span class="v">+${fmt0(projExtra)}</span></div>`;
+  list+=`<div class="pace-li"><span class="nm"><span class="pace-dot spend"></span>${remaining>=0?'Budget left to spend':'Over budget by'}</span><span class="v ${remaining<0?'neg':'pos'}">${remaining<0?'−':''}${fmt0(Math.abs(remaining))}</span></div>`;
+  list+=`<div class="pace-li tot"><span class="nm">Projected month-end spend</span><span class="v ${over>0.5?'neg':''}">${fmt0(proj)}</span></div>`;
+  list+=`</div>`;
+
+  return `<div class="card pace">
+    <div class="head2">
+      <div>
+        <div class="hero ${heroCls}">${fmt0(proj)}</div>
+        <div class="cap">${cap}</div>
+      </div>
+      <div class="month">${monLbl} · day ${day}<br>of ${dim}</div>
+    </div>
+    ${bar}${list}
   </div>`;
 }
 
