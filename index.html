@@ -168,6 +168,12 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .settle{background:var(--tertiary-container);color:var(--on-tertiary-container)}
 .settle .big{font-size:1.5rem;font-weight:800;margin:4px 0}
 .settle .sub{color:var(--on-tertiary-container);opacity:.85}
+/* compact settle widget (shared home) */
+.settle-mini{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:11px 15px;background:var(--tertiary-container);color:var(--on-tertiary-container)}
+.settle-mini:not(.static){cursor:pointer}
+.settle-mini:not(.static):active{filter:brightness(.96)}
+.settle-mini .sm-txt{font-size:.92rem;font-weight:600}
+.settle-mini .sm-act{font-size:.82rem;font-weight:700;opacity:.8;white-space:nowrap}
 /* settle-up sheet: direction picker, live preview, history */
 .settle-dir{display:flex;align-items:center;justify-content:center;gap:10px;margin:8px 0 6px}
 .settle-who{flex:1;text-align:center;background:var(--surface-container-high);color:var(--on-surface);padding:13px 8px;border-radius:var(--r-md);font-weight:700;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1255,29 +1261,33 @@ function viewHome(){
   const income=sumBy(mtx,'income'), expense=sumBy(mtx,'expense'), savings=income-expense;
   const reflected = activeSpace==='personal' ? mtx.filter(t=>t._shared).reduce((a,t)=>a+(+t.amount||0),0) : 0;
 
-  // settle card (shared)
+  // settle widget (shared) — compact one-line
   if(activeSpace==='shared'){ const bal=settleBalance(sp); if(bal){
     const partnerOwesYou = bal.net>0.005;
     const hasBal = Math.abs(bal.net)>=0.01;
     const nSet = (sp.settlements||[]).length;
-    h+=`<div class="card settle">
-      <h3>🤝 Settle up</h3>
-      ${!hasBal
-        ? `<div class="big">All settled 🎉</div><div class="sub">You're even with ${bal.otherName}.</div>`
-        : partnerOwesYou
-          ? `<div class="big">${bal.otherName} owes you ${fmt(bal.net)}</div>`
-          : `<div class="big">You owe ${bal.otherName} ${fmt(-bal.net)}</div>`}
-      ${(hasBal||nSet)?`<button class="btn tonal mt8" onclick="openSettle()">${hasBal?'Record a settle-up':'Settle-up history'}</button>`:''}
+    const clickable = hasBal || nSet>0;
+    const txt = !hasBal
+      ? `🤝 You're even with ${bal.otherName}`
+      : partnerOwesYou
+        ? `🤝 ${bal.otherName} owes you <b>${fmt(bal.net)}</b>`
+        : `🤝 You owe ${bal.otherName} <b>${fmt(-bal.net)}</b>`;
+    const act = hasBal ? 'Settle ›' : (nSet>0 ? 'History ›' : '');
+    h+=`<div class="card settle-mini${clickable?'':' static'}" ${clickable?'onclick="openSettle()"':''}>
+      <span class="sm-txt">${txt}</span>
+      ${act?`<span class="sm-act">${act}</span>`:''}
     </div>`;
   }}
 
-  // summary tiles
-  h+=`<div class="sum-grid">
-    <div class="sum-tile income"><div class="lbl">Income</div><div class="val">${fmt0(income)}</div></div>
-    <div class="sum-tile expense"><div class="lbl">Spent</div><div class="val">${fmt0(expense)}</div></div>
-    <div class="sum-tile save"><div class="lbl">Saved</div><div class="val ${savings>=0?'pos':'neg'}">${savings<0?'-':''}${fmt0(savings)}</div></div>
-  </div>`;
-  if(reflected>0) h+=`<div class="sub" style="margin:-4px 2px 10px">🤝 Includes <b>${fmt0(reflected)}</b> — your share of Shared expenses this month.</div>`;
+  // summary tiles — hidden on Shared (no income; it purely tracks spending, see the spend-pace card)
+  if(activeSpace!=='shared'){
+    h+=`<div class="sum-grid">
+      <div class="sum-tile income"><div class="lbl">Income</div><div class="val">${fmt0(income)}</div></div>
+      <div class="sum-tile expense"><div class="lbl">Spent</div><div class="val">${fmt0(expense)}</div></div>
+      <div class="sum-tile save"><div class="lbl">Saved</div><div class="val ${savings>=0?'pos':'neg'}">${savings<0?'-':''}${fmt0(savings)}</div></div>
+    </div>`;
+    if(reflected>0) h+=`<div class="sub" style="margin:-4px 2px 10px">🤝 Includes <b>${fmt0(reflected)}</b> — your share of Shared expenses this month.</div>`;
+  }
 
   // savings goal
   const goal=+sp.settings.savingsGoal||0;
