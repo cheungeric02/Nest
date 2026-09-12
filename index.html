@@ -230,6 +230,18 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .pool-track.over{background:var(--error)}
 .pool-meta{display:flex;justify-content:space-between;font-size:.76rem;color:var(--on-surface-variant)}
 .pool-badge{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.02em;color:var(--primary);background:var(--primary-container);border-radius:var(--r-full);padding:2px 8px;vertical-align:middle;margin-left:4px}
+.pool-goalbar{height:10px;border-radius:var(--r-full);overflow:hidden;background:var(--surface-container-highest);margin:9px 0 7px}
+.pool-goalfill{height:100%;background:var(--primary);border-radius:var(--r-full);transition:width .4s}
+.pool-status{font-size:.8rem;font-weight:600;margin-top:6px;color:var(--on-surface-variant)}
+.pool-status.ok{color:var(--success)} .pool-status.warn{color:var(--warn)}
+.goal-mini{padding:14px 16px}
+.goal-mini .gm-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:9px}
+.goal-mini .gm-nm{font-weight:600}
+.goal-mini .gm-pct{font-weight:800;color:var(--primary)}
+.goal-mini .gm-bar{height:8px;border-radius:var(--r-full);overflow:hidden;background:var(--surface-container-highest)}
+.goal-mini .gm-fill{height:100%;background:var(--primary);border-radius:var(--r-full);transition:width .4s}
+.goal-mini .gm-meta{display:flex;justify-content:space-between;font-size:.76rem;color:var(--on-surface-variant);margin-top:7px}
+.goal-mini .gm-meta .ok{color:var(--success);font-weight:600} .goal-mini .gm-meta .warn{color:var(--warn);font-weight:600}
 .field label.switch-row{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;font-size:.92rem;color:var(--on-surface);font-weight:600;margin-bottom:0}
 .switch-row input[type=checkbox]{width:22px;height:22px;accent-color:var(--primary);flex:none}
 
@@ -1171,6 +1183,8 @@ function monthsSinceInclusive(startYM, endYM){
   const [sy,sm]=startYM.split('-').map(Number), [ey,em]=endYM.split('-').map(Number);
   return Math.max(0,(ey-sy)*12+(em-sm)+1);
 }
+function addMonthsYM(ym,n){ const [y,m]=ym.split('-').map(Number); return ymKey(new Date(y,(m-1)+n,1)); }
+function monthsBetweenYM(aYM,bYM){ const [ay,am]=aYM.split('-').map(Number),[by,bm]=bYM.split('-').map(Number); return (by-ay)*12+(bm-am); }
 function poolStats(sp,cat){
   const nowYM=ymKey(new Date());
   const start=cat.poolStart||nowYM;
@@ -1185,7 +1199,26 @@ function poolStats(sp,cat){
       if(m&&m.slice(0,4)===yr) spentYTD+=(+t.amount||0);
     }
   });
-  return {start,months,setAside,seed,accrued,spent,spentYTD,balance:accrued-spent};
+  const balance=Math.round((accrued-spent)*100)/100;
+
+  // optional big-goal target (e.g. house down payment): a finish line + ETA
+  const goal=+cat.poolTarget||0;
+  const goalDate=cat.poolTargetDate||null;   // 'YYYY-MM'
+  let goalPct=0, toGo=0, etaYM=null, onTrack=null, reqPerMo=0, monthsToDate=0, reached=false;
+  if(goal>0){
+    goalPct=Math.max(0,Math.min(100,(balance/goal)*100));
+    toGo=Math.max(0,Math.round((goal-balance)*100)/100);
+    reached=toGo<=0.005;
+    if(reached){ etaYM=nowYM; }
+    else if(setAside>0){ etaYM=addMonthsYM(nowYM, Math.ceil(toGo/setAside)); }
+    if(goalDate){
+      monthsToDate=Math.max(0, monthsBetweenYM(nowYM, goalDate));
+      reqPerMo=reached?0:(monthsToDate>0?Math.round((toGo/monthsToDate)*100)/100:toGo);
+      onTrack=reached?true:(etaYM?etaYM<=goalDate:false);
+    }
+  }
+  return {start,months,setAside,seed,accrued,spent,spentYTD,balance,
+          goal,goalDate,goalPct,toGo,etaYM,onTrack,reqPerMo,monthsToDate,reached};
 }
 
 /* settle-up between the two members (shared).
@@ -1306,6 +1339,9 @@ function viewHome(){
     h+=onPaceCard(savings, expectedIncome, remainingBudget);
   }
   }
+
+  // big-goal progress (e.g. house down payment) — one quiet line per goal pool; full detail lives in Insights
+  h+=homeGoalCards(sp);
 
   // 50/30/20
   h+=view503020(sp,mtx,income);
@@ -1726,7 +1762,7 @@ function viewPlan(){
         <div class="flex mt8">
           <span class="muted">${CUR_SYMBOL}</span><input class="input" type="number" inputmode="decimal" style="max-width:140px" value="${c.target||''}" placeholder="0" onchange="setCatTarget('${c.id}','amt',this.value)"><span class="muted">set aside / mo</span>
         </div>
-        <div class="pct-income">Fund balance now · <b>${ps.balance<0?'−':''}${fmt0(ps.balance)}</b></div>
+        <div class="pct-income">Fund balance now · <b>${ps.balance<0?'−':''}${fmt0(ps.balance)}</b>${ps.goal>0?` — ${Math.round(ps.goalPct)}% of ${fmt0(ps.goal)} goal`:''}</div>
       </div>`;
       return;
     }
@@ -1885,6 +1921,25 @@ function insightsTrendChart(rows){
 }
 
 // Savings pools — running sinking funds shown "as of now", not scoped to the viewed month.
+// Compact Home line(s) for goal pools — quiet, no nag: name, progress bar, % and one status word.
+function homeGoalCards(sp){
+  const goals=(sp.categories||[]).filter(c=>c.type==='expense'&&c.pool&&(+c.poolTarget||0)>0);
+  if(!goals.length) return '';
+  return goals.map(c=>{
+    const s=poolStats(sp,c);
+    let right, cls='';
+    if(s.reached){ right='🎉 reached'; cls='ok'; }
+    else if(s.goalDate && s.onTrack){ right=`on track · ${monthLabel(s.goalDate)}`; cls='ok'; }
+    else if(s.goalDate && s.onTrack===false){ right=`behind · ~${s.etaYM?monthLabel(s.etaYM):'—'}`; cls='warn'; }
+    else if(s.etaYM){ right=`~${monthLabel(s.etaYM)}`; }
+    else right='';
+    return `<div class="card goal-mini">
+      <div class="gm-head"><span class="gm-nm">${c.icon||'🎯'} ${c.name}</span><span class="gm-pct">${Math.round(s.goalPct)}%</span></div>
+      <div class="gm-bar"><div class="gm-fill" style="width:${s.goalPct.toFixed(1)}%"></div></div>
+      <div class="gm-meta"><span>${fmt0(s.balance)} of ${fmt0(s.goal)}${s.reached?'':' · '+fmt0(s.toGo)+' to go'}</span><span class="${cls}">${right}</span></div>
+    </div>`;
+  }).join('');
+}
 function poolsCard(sp){
   const pools=(sp.categories||[]).filter(c=>c.type==='expense'&&c.pool);
   if(!pools.length) return '';
@@ -1892,6 +1947,29 @@ function poolsCard(sp){
     <div class="sub mb8">Sinking funds you build over time — set aside monthly, spend whenever. Balances carry across months and years.</div>`;
   pools.forEach(c=>{
     const s=poolStats(sp,c);
+    if(s.goal>0){
+      // goal pool (e.g. house down payment): progress toward a target + ETA
+      const st = s.reached ? 'ok' : (s.onTrack===false ? 'warn' : 'ok');
+      let status;
+      if(s.reached) status=`🎉 Goal reached!`;
+      else if(s.goalDate && s.onTrack) status=`🟢 On track for ${monthLabel(s.goalDate)}`;
+      else if(s.goalDate && s.onTrack===false) status=`🟠 ~${s.etaYM?monthLabel(s.etaYM):'—'} at ${fmt0(s.setAside)}/mo · ${fmt0(s.reqPerMo)}/mo to hit ${monthLabel(s.goalDate)}`;
+      else if(s.etaYM) status=`On pace to reach it by ${monthLabel(s.etaYM)} at ${fmt0(s.setAside)}/mo`;
+      else status=`Set a monthly amount in Plan to see an ETA`;
+      h+=`<div class="pool-row">
+        <div class="pool-head">
+          <span class="pool-nm">${c.icon||'•'} ${c.name}</span>
+          <span class="pool-bal">${fmt0(s.balance)}</span>
+        </div>
+        <div class="pool-goalbar"><div class="pool-goalfill" style="width:${s.goalPct.toFixed(1)}%"></div></div>
+        <div class="pool-meta">
+          <span>${fmt0(s.balance)} of ${fmt0(s.goal)} · ${Math.round(s.goalPct)}%</span>
+          <span>${s.reached?'0 to go':fmt0(s.toGo)+' to go'}</span>
+        </div>
+        <div class="pool-status ${st}">${status}</div>
+      </div>`;
+      return;
+    }
     const over=s.balance<-0.005;
     const spentPct=s.accrued>0?Math.max(0,Math.min(100,(s.spent/s.accrued)*100)):(s.spent>0?100:0);
     h+=`<div class="pool-row">
@@ -2995,9 +3073,17 @@ function sheetEditCat(id){
       <div class="sub" style="margin-top:6px">A sinking fund like travel — set aside monthly, spend whenever. The balance carries over across months and years, and it's tracked in Insights instead of the monthly budget.</div>
     </div>
     <div id="ecPoolFields" ${c.pool?'':'hidden'}>
-      <div class="field"><label>Starting balance already saved</label>
+      <div class="field"><label>Balance in this fund today</label>
         <div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="ecPoolSeed" class="input" type="number" inputmode="decimal" value="${c.poolSeed!=null&&c.poolSeed!==0?c.poolSeed:''}" placeholder="0"></div>
-        <div class="sub" style="margin-top:6px">What's already in this fund today. The monthly set-aside is the category's amount in Plan.</div>
+        <div class="sub" style="margin-top:6px">What's saved right now. Update this anytime you check your accounts — the fund grows from here by the monthly amount you set in Plan.</div>
+      </div>
+      <div class="field"><label>Goal amount <span class="muted">(optional)</span></label>
+        <div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="ecPoolTarget" class="input" type="number" inputmode="decimal" value="${c.poolTarget!=null&&c.poolTarget!==0?c.poolTarget:''}" placeholder="e.g. 225000"></div>
+        <div class="sub" style="margin-top:6px">Set a finish line to track progress + an ETA. Leave blank for a plain running fund.</div>
+      </div>
+      <div class="field"><label>Target date <span class="muted">(optional)</span></label>
+        <input id="ecPoolTargetDate" class="input" type="month" value="${c.poolTargetDate||''}">
+        <div class="sub" style="margin-top:6px">When you'd like to reach the goal. Shows whether you're on track at the current pace.</div>
       </div>
     </div>`:''}
     <button class="btn filled block" onclick="saveCatEdit('${id}')">Save changes</button>`;
@@ -3011,9 +3097,15 @@ function saveCatEdit(id){
   if(poolCb){
     if(poolCb.checked){
       c.pool=true; c.useIncomePct=false;                       // pools use a fixed $ set-aside
-      c.poolSeed=+((document.getElementById('ecPoolSeed')||{}).value)||0;
-      if(!c.poolStart) c.poolStart=ymKey(new Date());          // begin accruing this month
-    } else { c.pool=false; }                                   // keep seed/start so re-enabling resumes
+      const newSeed=+((document.getElementById('ecPoolSeed')||{}).value)||0;
+      const nowYM=ymKey(new Date());
+      // re-baselining the balance restarts accrual from today, so "balance today" stays honest
+      if(!c.poolStart || newSeed!==(+c.poolSeed||0)) c.poolStart=nowYM;
+      c.poolSeed=newSeed;
+      c.poolTarget=+((document.getElementById('ecPoolTarget')||{}).value)||0;
+      const td=((document.getElementById('ecPoolTargetDate')||{}).value||'').trim();
+      c.poolTargetDate=/^\d{4}-\d{2}$/.test(td)?td:null;
+    } else { c.pool=false; }                                   // keep seed/start/goal so re-enabling resumes
   }
   saveSpace(activeSpace); openSheet('managecats'); render(); toast('Category updated');
 }
