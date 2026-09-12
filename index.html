@@ -240,6 +240,10 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .pool-goalfill{height:100%;background:var(--primary);border-radius:var(--r-full);transition:width .4s}
 .pool-status{font-size:.8rem;font-weight:600;margin-top:6px;color:var(--on-surface-variant)}
 .pool-status.ok{color:var(--success)} .pool-status.warn{color:var(--warn)}
+.pool-asof{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.74rem;color:var(--on-surface-variant);margin-top:7px}
+.pool-asof.warn{color:var(--warn);font-weight:600}
+.pool-upd,.gm-upd{color:var(--primary);font-weight:700;white-space:nowrap;cursor:pointer}
+.pool-upd:active,.gm-upd:active{opacity:.6}
 .goal-mini{padding:14px 16px}
 .goal-mini .gm-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:9px}
 .goal-mini .gm-nm{font-weight:600}
@@ -248,6 +252,8 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .goal-mini .gm-fill{height:100%;background:var(--primary);border-radius:var(--r-full);transition:width .4s}
 .goal-mini .gm-meta{display:flex;justify-content:space-between;font-size:.76rem;color:var(--on-surface-variant);margin-top:7px}
 .goal-mini .gm-meta .ok{color:var(--success);font-weight:600} .goal-mini .gm-meta .warn{color:var(--warn);font-weight:600}
+.goal-mini .gm-asof{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:.72rem;color:var(--on-surface-variant);margin-top:6px}
+.goal-mini .gm-asof.warn{color:var(--warn);font-weight:600}
 .field label.switch-row{display:flex;justify-content:space-between;align-items:center;gap:12px;cursor:pointer;font-size:.92rem;color:var(--on-surface);font-weight:600;margin-bottom:0}
 .switch-row input[type=checkbox]{width:22px;height:22px;accent-color:var(--primary);flex:none}
 
@@ -995,6 +1001,7 @@ function buildDefaultCats(){
    ===================================================================== */
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function ymKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function parseYM(k){ const [y,m]=k.split('-').map(Number); return new Date(y,m-1,1); }
 function monthLabel(k){ return parseYM(k).toLocaleDateString('en-CA',{month:'long',year:'numeric'}); }
@@ -1223,8 +1230,19 @@ function poolStats(sp,cat){
       onTrack=reached?true:(etaYM?etaYM<=goalDate:false);
     }
   }
+  // when the balance was last trued-up (re-baselined); falls back to the accrual start month for older pools
+  const asOf = cat.poolAsOf || (cat.poolStart ? cat.poolStart+'-01' : null);
+  let monthsSinceAsOf=0, stale=false;
+  if(asOf){ monthsSinceAsOf=Math.max(0, monthsBetweenYM(asOf.slice(0,7), nowYM)); stale=monthsSinceAsOf>=2; }
+
   return {start,months,setAside,seed,accrued,spent,spentYTD,balance,
-          goal,goalDate,goalPct,toGo,etaYM,onTrack,reqPerMo,monthsToDate,reached};
+          goal,goalDate,goalPct,toGo,etaYM,onTrack,reqPerMo,monthsToDate,reached,
+          asOf,monthsSinceAsOf,stale};
+}
+function poolAsOfLabel(s){
+  if(!s.asOf) return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s.asOf)) return new Date(s.asOf+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  return monthLabel(s.asOf.slice(0,7));
 }
 
 /* settle-up between the two members (shared).
@@ -1947,6 +1965,7 @@ function homeGoalCards(sp){
       <div class="gm-head"><span class="gm-nm">${c.icon||'🎯'} ${c.name}</span><span class="gm-pct">${Math.round(s.goalPct)}%</span></div>
       <div class="gm-bar"><div class="gm-fill" style="width:${s.goalPct.toFixed(1)}%"></div></div>
       <div class="gm-meta"><span>${fmt0(s.balance)} of ${fmt0(s.goal)}${s.reached?'':' · '+fmt0(s.toGo)+' to go'}</span><span class="${cls}">${right}</span></div>
+      ${s.asOf?`<div class="gm-asof ${s.stale?'warn':''}"><span>as of ${poolAsOfLabel(s)}${s.stale?` · ${s.monthsSinceAsOf} mo ago`:''}</span><span class="gm-upd" onclick="openEditCat('${c.id}')">Update ›</span></div>`:''}
     </div>`;
   }).join('');
 }
@@ -1977,6 +1996,7 @@ function poolsCard(sp){
           <span>${s.reached?'0 to go':fmt0(s.toGo)+' to go'}</span>
         </div>
         <div class="pool-status ${st}">${status}</div>
+        ${s.asOf?`<div class="pool-asof ${s.stale?'warn':''}"><span>Balance as of ${poolAsOfLabel(s)}${s.stale?` · ${s.monthsSinceAsOf} mo ago — update me`:''}</span><span class="pool-upd" onclick="openEditCat('${c.id}')">Update ›</span></div>`:''}
       </div>`;
       return;
     }
@@ -3110,7 +3130,7 @@ function saveCatEdit(id){
       const newSeed=+((document.getElementById('ecPoolSeed')||{}).value)||0;
       const nowYM=ymKey(new Date());
       // re-baselining the balance restarts accrual from today, so "balance today" stays honest
-      if(!c.poolStart || newSeed!==(+c.poolSeed||0)) c.poolStart=nowYM;
+      if(!c.poolStart || newSeed!==(+c.poolSeed||0)){ c.poolStart=nowYM; c.poolAsOf=todayISO(); }
       c.poolSeed=newSeed;
       c.poolTarget=+((document.getElementById('ecPoolTarget')||{}).value)||0;
       const td=((document.getElementById('ecPoolTargetDate')||{}).value||'').trim();
