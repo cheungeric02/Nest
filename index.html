@@ -244,6 +244,13 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .pool-asof.warn{color:var(--warn);font-weight:600}
 .pool-upd,.gm-upd{color:var(--primary);font-weight:700;white-space:nowrap;cursor:pointer}
 .pool-upd:active,.gm-upd:active{opacity:.6}
+.pool-splits{margin-top:8px;border-top:1px solid var(--outline-variant);padding-top:8px}
+.pool-split{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:.78rem;color:var(--on-surface);padding:3px 0}
+.pool-split .ps-nm{font-weight:600}
+.pool-split .ps-amt{font-weight:700}
+.pool-split .ps-as{font-weight:500;color:var(--on-surface-variant)}
+.pool-split.warn .ps-as{color:var(--warn);font-weight:600}
+.pool-split.upd{padding-top:5px}
 .goal-mini{padding:14px 16px}
 .goal-mini .gm-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:9px}
 .goal-mini .gm-nm{font-weight:600}
@@ -1201,7 +1208,9 @@ function monthsBetweenYM(aYM,bYM){ const [ay,am]=aYM.split('-').map(Number),[by,
 function poolStats(sp,cat){
   const nowYM=ymKey(new Date());
   const start=cat.poolStart||nowYM;
-  const months=monthsSinceInclusive(start, nowYM<start?start:nowYM);
+  // full months elapsed since the balance was set — the day you enter it, balance == what you entered;
+  // it then grows by the monthly set-aside as each subsequent month begins
+  const months=Math.max(0, monthsBetweenYM(start, nowYM<start?start:nowYM));
   const setAside=+cat.target||0;
   const seed=+cat.poolSeed||0;
   const accrued=seed+setAside*months;
@@ -1235,15 +1244,31 @@ function poolStats(sp,cat){
   let monthsSinceAsOf=0, stale=false;
   if(asOf){ monthsSinceAsOf=Math.max(0, monthsBetweenYM(asOf.slice(0,7), nowYM)); stale=monthsSinceAsOf>=2; }
 
+  // per-person contributions (shared goal split between partners): who put in what, as of when
+  const seedBy=cat.poolSeedBy||null, asOfBy=cat.poolAsOfBy||{};
+  const usingSplit = !!(seedBy && Object.keys(seedBy).length);
+  let contribs=[];
+  if(usingSplit){
+    const memUids=Object.keys((sp&&sp.members)||{});
+    (memUids.length?memUids:Object.keys(seedBy)).forEach(u=>{
+      const amt=+seedBy[u]||0, d=asOfBy[u]||null;
+      let ms=null, st=false;
+      if(d){ ms=Math.max(0, monthsBetweenYM(d.slice(0,7), nowYM)); st=ms>=2; }
+      contribs.push({uid:u, name:((sp.members&&sp.members[u]&&sp.members[u].name)||'Member'),
+                     amount:amt, asOf:d, monthsSince:ms, stale:st, isMe:!!(user&&u===user.uid)});
+    });
+  }
+
   return {start,months,setAside,seed,accrued,spent,spentYTD,balance,
           goal,goalDate,goalPct,toGo,etaYM,onTrack,reqPerMo,monthsToDate,reached,
-          asOf,monthsSinceAsOf,stale};
+          asOf,monthsSinceAsOf,stale,usingSplit,contribs};
 }
-function poolAsOfLabel(s){
-  if(!s.asOf) return '';
-  if(/^\d{4}-\d{2}-\d{2}$/.test(s.asOf)) return new Date(s.asOf+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-  return monthLabel(s.asOf.slice(0,7));
+function fmtAsOf(iso){
+  if(!iso) return '';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(iso)) return new Date(iso+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  return monthLabel(iso.slice(0,7));
 }
+function poolAsOfLabel(s){ return fmtAsOf(s.asOf); }
 
 /* settle-up between the two members (shared).
    net > 0  => partner owes you;  net < 0 => you owe partner. */
@@ -1996,7 +2021,10 @@ function poolsCard(sp){
           <span>${s.reached?'0 to go':fmt0(s.toGo)+' to go'}</span>
         </div>
         <div class="pool-status ${st}">${status}</div>
-        ${s.asOf?`<div class="pool-asof ${s.stale?'warn':''}"><span>Balance as of ${poolAsOfLabel(s)}${s.stale?` · ${s.monthsSinceAsOf} mo ago — update me`:''}</span><span class="pool-upd" onclick="openEditCat('${c.id}')">Update ›</span></div>`:''}
+        ${s.usingSplit
+          ? `<div class="pool-splits">${s.contribs.map(p=>`<div class="pool-split ${p.stale?'warn':''}"><span class="ps-nm">${p.isMe?'You':p.name}</span><span class="ps-amt">${fmt0(p.amount)}<span class="ps-as">${p.asOf?' · as of '+fmtAsOf(p.asOf)+(p.stale?` · ${p.monthsSince} mo ago`:''):' · not added yet'}</span></span></div>`).join('')}
+             <div class="pool-split upd"><span class="ps-nm muted">Each partner updates their own</span><span class="pool-upd" onclick="openEditCat('${c.id}')">Update ›</span></div></div>`
+          : (s.asOf?`<div class="pool-asof ${s.stale?'warn':''}"><span>Balance as of ${poolAsOfLabel(s)}${s.stale?` · ${s.monthsSinceAsOf} mo ago — update me`:''}</span><span class="pool-upd" onclick="openEditCat('${c.id}')">Update ›</span></div>`:'')}
       </div>`;
       return;
     }
@@ -3092,6 +3120,35 @@ function addCat(){
   saveSpace(activeSpace); openSheet('managecats'); render(); toast('Category added');
 }
 function openEditCat(id){ const c=catById(curSpace(),id); if(!c) return; openSheetHTML(sheetEditCat(id)); }
+// Balance input(s) for a savings pool. Shared space with 2+ members → one input per person
+// ("each of you enters your own amount as of the day you check your account"); otherwise a single field.
+function ecSeedFields(sp,c){
+  const memUids=Object.keys((sp&&sp.members)||{});
+  if(memUids.length<2){
+    return `<div class="field"><label>Balance in this fund today</label>
+      <div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="ecPoolSeed" class="input" type="number" inputmode="decimal" value="${c.poolSeed!=null&&c.poolSeed!==0?c.poolSeed:''}" placeholder="0"></div>
+      <div class="sub" style="margin-top:6px">What's saved right now. Update this anytime you check your accounts — the fund grows from here by the monthly amount you set in Plan.</div>
+    </div>`;
+  }
+  const ordered=memUids.slice().sort((a,b)=> a===(user&&user.uid)?-1 : b===(user&&user.uid)?1 : 0);
+  const seedBy=c.poolSeedBy||{}, asOfBy=c.poolAsOfBy||{};
+  // migration: an older combined pool (poolSeed, no per-person split) seeds your field to start from
+  const migrate = Object.keys(seedBy).length===0 && (+c.poolSeed||0)>0;
+  const valFor=uid=> seedBy[uid]!=null ? seedBy[uid] : (migrate&&uid===(user&&user.uid) ? c.poolSeed : '');
+  let inner=ordered.map(uid=>{
+    const nm=(sp.members[uid]&&sp.members[uid].name)||'Member';
+    let v=valFor(uid); if(v===0) v='';
+    const d=asOfBy[uid];
+    return `<div class="field"><label>${uid===(user&&user.uid)?'Your balance':nm+"&#39;s balance"}</label>
+      <div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="ecPoolSeed_${uid}" class="input pps" type="number" inputmode="decimal" value="${v}" placeholder="0" oninput="ecPoolTotal()"></div>
+      <div class="sub" style="margin-top:6px">${d?'Last set '+fmtAsOf(d):'Not set yet'}</div>
+    </div>`;
+  }).join('');
+  const tot=ordered.reduce((a,uid)=>a+(+valFor(uid)||0),0);
+  inner+=`<div class="field"><div class="sub">Combined balance: <b id="ecPoolTot">${fmt0(tot)}</b> — this is what counts toward the goal. Each of you updates your own amount as of the day you check your account.</div></div>`;
+  return inner;
+}
+function ecPoolTotal(){ let t=0; document.querySelectorAll('#ecPoolFields input.pps').forEach(i=>t+=(+i.value||0)); const el=document.getElementById('ecPoolTot'); if(el) el.textContent=fmt0(t); }
 function sheetEditCat(id){
   const c=catById(curSpace(),id); if(!c) return '';
   return `<div class="grabber"></div><h2>Edit category</h2>
@@ -3103,10 +3160,7 @@ function sheetEditCat(id){
       <div class="sub" style="margin-top:6px">A sinking fund like travel — set aside monthly, spend whenever. The balance carries over across months and years, and it's tracked in Insights instead of the monthly budget.</div>
     </div>
     <div id="ecPoolFields" ${c.pool?'':'hidden'}>
-      <div class="field"><label>Balance in this fund today</label>
-        <div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="ecPoolSeed" class="input" type="number" inputmode="decimal" value="${c.poolSeed!=null&&c.poolSeed!==0?c.poolSeed:''}" placeholder="0"></div>
-        <div class="sub" style="margin-top:6px">What's saved right now. Update this anytime you check your accounts — the fund grows from here by the monthly amount you set in Plan.</div>
-      </div>
+      ${ecSeedFields(curSpace(),c)}
       <div class="field"><label>Goal amount <span class="muted">(optional)</span></label>
         <div class="flex"><span class="muted">${CUR_SYMBOL}</span><input id="ecPoolTarget" class="input" type="number" inputmode="decimal" value="${c.poolTarget!=null&&c.poolTarget!==0?c.poolTarget:''}" placeholder="e.g. 225000"></div>
         <div class="sub" style="margin-top:6px">Set a finish line to track progress + an ETA. Leave blank for a plain running fund.</div>
@@ -3127,11 +3181,28 @@ function saveCatEdit(id){
   if(poolCb){
     if(poolCb.checked){
       c.pool=true; c.useIncomePct=false;                       // pools use a fixed $ set-aside
-      const newSeed=+((document.getElementById('ecPoolSeed')||{}).value)||0;
-      const nowYM=ymKey(new Date());
-      // re-baselining the balance restarts accrual from today, so "balance today" stays honest
-      if(!c.poolStart || newSeed!==(+c.poolSeed||0)){ c.poolStart=nowYM; c.poolAsOf=todayISO(); }
-      c.poolSeed=newSeed;
+      const memUids=Object.keys((curSpace().members)||{});
+      const perPerson = memUids.length>=2 && document.getElementById('ecPoolSeed_'+memUids[0]);
+      if(perPerson){
+        // each partner enters their own balance as of the day they last checked their account
+        c.poolSeedBy=c.poolSeedBy||{}; c.poolAsOfBy=c.poolAsOfBy||{};
+        memUids.forEach(u=>{
+          const inp=document.getElementById('ecPoolSeed_'+u); if(!inp) return;
+          const v=+inp.value||0, prev=+(c.poolSeedBy[u])||0;
+          if(v!==prev || !c.poolAsOfBy[u]) c.poolAsOfBy[u]=todayISO();   // only bump the date for amounts that changed
+          c.poolSeedBy[u]=v;
+        });
+        c.poolSeed=memUids.reduce((a,u)=>a+(+c.poolSeedBy[u]||0),0);      // combined = sum
+        const dates=memUids.map(u=>c.poolAsOfBy[u]).filter(Boolean).sort();
+        c.poolStart=(dates[dates.length-1]||todayISO()).slice(0,7);        // accrual runs from the most recent update
+        c.poolAsOf=dates[0]||todayISO();                                   // oldest drives the "update me" nudge
+      } else {
+        const newSeed=+((document.getElementById('ecPoolSeed')||{}).value)||0;
+        const nowYM=ymKey(new Date());
+        // re-baselining the balance restarts accrual from today, so "balance today" stays honest
+        if(!c.poolStart || newSeed!==(+c.poolSeed||0)){ c.poolStart=nowYM; c.poolAsOf=todayISO(); }
+        c.poolSeed=newSeed;
+      }
       c.poolTarget=+((document.getElementById('ecPoolTarget')||{}).value)||0;
       const td=((document.getElementById('ecPoolTargetDate')||{}).value||'').trim();
       c.poolTargetDate=/^\d{4}-\d{2}$/.test(td)?td:null;
