@@ -1353,8 +1353,8 @@ function viewHome(){
   // big-goal progress (e.g. house down payment) — one quiet line per goal pool; full detail lives in Insights
   h+=homeGoalCards(sp);
 
-  // 50/30/20
-  h+=view503020(sp,mtx,income);
+  // 50/30/20 — hidden on Shared (income-based split; Shared purely tracks spending)
+  if(activeSpace!=='shared') h+=view503020(sp,mtx,income);
 
   // budget vs actual (pools are running funds, not monthly budgets — excluded here)
   // Supports a period window: this month, trailing 3/6/12 months, YTD, or a custom range.
