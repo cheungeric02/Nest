@@ -289,6 +289,16 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .tx.reflected{opacity:.9;background:var(--surface-container);border:1px dashed var(--outline-variant)}
 .tag{display:inline-block;font-size:.66rem;font-weight:700;padding:1px 7px;border-radius:var(--r-full);background:var(--secondary-container);color:var(--on-secondary-container);vertical-align:middle;margin-left:4px}
 
+/* activity / change log */
+.log-note{font-size:.78rem;color:var(--on-surface-variant);margin:0 2px 12px;display:flex;align-items:center;gap:6px}
+.log-row{display:flex;align-items:flex-start;gap:11px;background:var(--surface-container-low);border-radius:var(--r-md);padding:11px 13px;margin-bottom:8px;box-shadow:var(--shadow)}
+.log-row .lic{width:34px;height:34px;border-radius:var(--r-full);background:var(--surface-container-high);display:grid;place-items:center;font-size:1rem;flex-shrink:0}
+.log-row .lmid{flex:1;min-width:0}
+.log-row .lact{font-weight:600;font-size:.9rem;line-height:1.35}
+.log-row .ldet{font-weight:400;color:var(--on-surface-variant)}
+.log-row .lmeta{font-size:.74rem;color:var(--on-surface-variant);margin-top:2px}
+.log-row .lwho{font-weight:700;color:var(--primary)}
+
 /* chips */
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{padding:9px 14px;border-radius:var(--r-full);background:var(--surface-container-high);font-size:.9rem;font-weight:500;border:1.5px solid transparent}
@@ -658,7 +668,7 @@ const BACKUP_KEEP_CLOUD = 30;        // daily cloud snapshots retained
 const BACKUP_KEEP_LOCAL = 7;         // on-device snapshots retained
 
 function blankSpace(){
-  return { categories:[], transactions:[], recurring:[], favourites:[], vendorMap:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], inviteCode:null };
+  return { categories:[], transactions:[], recurring:[], favourites:[], vendorMap:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], activity:[], inviteCode:null };
 }
 
 /* =====================================================================
@@ -861,6 +871,21 @@ function pruneUndef(v){
 }
 function stripForSave(sp){ const c=pruneUndef(sp); delete c.id; return c; }
 
+/* ---- ACTIVITY LOG (audit history of what changed) -----------------
+   One entry per meaningful change. It lives INSIDE the space object, so
+   Personal history is private to that user (personal/{uid} is locked to
+   them) and Shared history is visible to every member (both partners).
+   Append BEFORE the caller's saveSpace() so it rides along in the write. */
+function logActivity(which, icon, action, detail){
+  const sp = which==='personal' ? data.personal : data.shared;
+  if(!sp || !user) return;
+  sp.activity = asArray(sp.activity);
+  sp.activity.push({ id:uid(), at:Date.now(), by:user.uid, byName:user.name||'', icon:icon||'•', action:action||'', detail:detail||'' });
+  if(sp.activity.length>400) sp.activity = sp.activity.slice(-400);   // keep the log bounded
+}
+// name of a category by id (for log details), safe if it was later deleted
+function catName(sp,id){ const c=catById(sp,id); return c? (c.icon?c.icon+' ':'')+c.name : 'a category'; }
+
 /* ---- connection awareness ---- */
 function watchConnection(){
   try{
@@ -973,6 +998,7 @@ function restoreBackup(which, src, day){
     const restored=normalizeSpace(snap.data);
     if(which==='shared'){ restored.id = (data.shared&&data.shared.id) || idPartFor('shared'); data.shared=restored; }
     else data.personal=restored;
+    logActivity(which,'♻️','Restored a backup','from '+bkLabel(day));
     saveSpace(which); closeSheet(); render(); toast('Restored the '+bkLabel(day)+' backup');
   };
   if((src==='local'||src==='both')){ const b=listLocalBackups(which).find(x=>x.day===day); if(b){ apply(b); return; } }
@@ -986,6 +1012,7 @@ function normalizeSpace(sp){
     categories: asArray(sp.categories),
     transactions: asArray(sp.transactions),
     settlements: asArray(sp.settlements),
+    activity: asArray(sp.activity),
     recurring: asArray(sp.recurring),
     favourites: asArray(sp.favourites),
     vendorMap: asArray(sp.vendorMap),
@@ -1637,9 +1664,15 @@ function unackLeftover(ym){ const sp=curSpace(); if(sp.settings&&sp.settings.lef
    ===================================================================== */
 let txFilter='all';
 let txCatFilter='all';
+let txView='entries';         // 'entries' = transactions | 'changes' = activity/audit log
 function viewTx(){
   const sp=curSpace();
-  let h=monthNav();
+  const toggle=`<div class="chips mb8" style="margin:0 0 12px">
+    <button class="chip small ${txView==='entries'?'active':''}" onclick="txView='entries';render()">🧾 Entries</button>
+    <button class="chip small ${txView==='changes'?'active':''}" onclick="txView='changes';render()">🕒 Changes</button>
+  </div>`;
+  if(txView==='changes') return toggle+viewActivityLog(sp);
+  let h=toggle+monthNav();
   const mtx=effMonthTx(sp,viewMonth).slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
   // categories present in this month, for the filter dropdown
   const present=[...new Set(mtx.map(t=>t.categoryId).filter(Boolean))]
@@ -1688,6 +1721,34 @@ function viewTx(){
   });
   return h;
 }
+// Change history: who updated what, newest first, grouped by day.
+// Personal = private to you; Shared = visible to every member.
+function viewActivityLog(sp){
+  const log = asArray(sp&&sp.activity).slice().sort((a,b)=>(b.at||0)-(a.at||0));
+  const note = activeSpace==='shared'
+    ? `<div class="log-note">👥 Everyone in this shared space can see these changes.</div>`
+    : `<div class="log-note">🔒 Private to you — only you see your Personal history.</div>`;
+  if(!log.length){
+    return `<div class="empty"><div class="em">🕒</div>No changes logged yet.<br>${activeSpace==='shared'?'Edits you or your partner make':'Edits you make'} will show up here.</div>`;
+  }
+  let h=note, lastDay='';
+  log.forEach(e=>{
+    const dt=new Date(e.at||0);
+    const dayKey=dt.toDateString();
+    if(dayKey!==lastDay){ lastDay=dayKey; h+=`<div class="tx-day">${dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})}</div>`; }
+    const isMe = user && e.by===user.uid;
+    const who = isMe ? 'You' : ((sp.members&&sp.members[e.by]&&sp.members[e.by].name) || e.byName || 'Someone');
+    const time = dt.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const meta = activeSpace==='shared' ? `<span class="lwho">${esc(who)}</span> · ${time}` : time;
+    h+=`<div class="log-row">
+      <div class="lic">${e.icon||'•'}</div>
+      <div class="lmid"><div class="lact">${esc(e.action)}${e.detail?`<span class="ldet"> · ${esc(e.detail)}</span>`:''}</div>
+      <div class="lmeta">${meta}</div></div>
+    </div>`;
+  });
+  return h;
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function paidByName(sp,t){ if(!t.paidBy) return ''; if(t.paidBy===user.uid) return 'You paid'; const m=sp.members[t.paidBy]; return (m&&m.name?m.name:'Partner')+' paid'; }
 function openReflected(srcId){ activeSpace='shared'; render(); if(srcId) openEdit(srcId); }
 
@@ -1852,7 +1913,7 @@ function viewPlan(){
     ${planPieChart(sp, incBasis)}</div>`;
   return h;
 }
-function setPaycheck(v){ curSpace().settings.paycheck=+v||0; saveSpace(activeSpace); render(); toast('Income updated'); }
+function setPaycheck(v){ curSpace().settings.paycheck=+v||0; logActivity(activeSpace,'💵','Updated income',fmt0(+v||0)+' / paycheque'); saveSpace(activeSpace); render(); toast('Income updated'); }
 function applyRecSavings(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=0)return; const rec=Math.round(mo*REC_SAVINGS_PCT/100);
   if(!confirm(`Set your monthly savings goal to ${fmt0(rec)}?\n\nThat's the recommended ${REC_SAVINGS_PCT}% of your income and will replace your current goal${sp.settings.savingsGoal?' of '+fmt0(sp.settings.savingsGoal):''}.`)) return;
   sp.settings.savingsGoal=rec; saveSpace(activeSpace); render(); toast('Recommended savings applied'); }
@@ -1863,11 +1924,11 @@ function applyAllRec(){ const sp=curSpace(); const mo=monthlySalary(sp); if(mo<=
   const n=(sp.categories||[]).filter(c=>c.type==='expense'&&REC_PCT[c.name]!=null).length;
   if(!confirm(`Apply all recommended budgets?\n\nThis overwrites the targets on ${n} categories and your savings goal with the 50 / 30 / 20 amounts for your income. Any custom targets you set will be replaced.`)) return;
   (sp.categories||[]).filter(c=>c.type==='expense'&&REC_PCT[c.name]!=null).forEach(c=>{ c.useIncomePct=false; c.target=Math.round(mo*REC_PCT[c.name]/100); }); sp.settings.savingsGoal=Math.round(mo*REC_SAVINGS_PCT/100); saveSpace(activeSpace); render(); toast('All recommendations applied'); }
-function setSavingsGoal(v){ curSpace().settings.savingsGoal=+v||0; saveSpace(activeSpace); toast('Savings goal updated'); }
+function setSavingsGoal(v){ curSpace().settings.savingsGoal=+v||0; logActivity(activeSpace,'🎯','Set savings goal',fmt0(+v||0)+'/mo'); saveSpace(activeSpace); toast('Savings goal updated'); }
 function setCatMode(id,useP){ const c=catById(curSpace(),id); if(c){c.useIncomePct=useP; saveSpace(activeSpace); render();} }
-function setCatTarget(id,kind,v){ const c=catById(curSpace(),id); if(!c)return; if(kind==='pct')c.targetPct=+v||0; else c.target=+v||0; saveSpace(activeSpace); render(); }
-function toggleRecurring(id){ const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id); if(!r)return; r.active=r.active===false; if(r.active) runRecurring(sp); else saveSpace(activeSpace); render(); toast(r.active?'Resumed':'Paused'); }
-function deleteRecurring(id){ const sp=curSpace(); if(!confirm('Delete this recurring rule? Entries already added will stay.'))return; sp.recurring=asArray(sp.recurring).filter(x=>x.id!==id); saveSpace(activeSpace); render(); toast('Recurring deleted'); }
+function setCatTarget(id,kind,v){ const c=catById(curSpace(),id); if(!c)return; if(kind==='pct')c.targetPct=+v||0; else c.target=+v||0; logActivity(activeSpace,'📊','Set budget',(c.icon?c.icon+' ':'')+c.name+' · '+(kind==='pct'?(+v||0)+'% of income':fmt0(+v||0)+(c.pool?'/mo set-aside':'/mo'))); saveSpace(activeSpace); render(); }
+function toggleRecurring(id){ const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id); if(!r)return; r.active=r.active===false; logActivity(activeSpace,'🔁',(r.active?'Resumed':'Paused')+' recurring',catName(sp,r.categoryId)); if(r.active) runRecurring(sp); else saveSpace(activeSpace); render(); toast(r.active?'Resumed':'Paused'); }
+function deleteRecurring(id){ const sp=curSpace(); if(!confirm('Delete this recurring rule? Entries already added will stay.'))return; const r=asArray(sp.recurring).find(x=>x.id===id); sp.recurring=asArray(sp.recurring).filter(x=>x.id!==id); if(r) logActivity(activeSpace,'🗑️','Deleted recurring',catName(sp,r.categoryId)); saveSpace(activeSpace); render(); toast('Recurring deleted'); }
 
 /* =====================================================================
    VIEW: INSIGHTS
@@ -2109,11 +2170,11 @@ function createShared(){
     sp.id='shared';
     // in test mode add both fake people so you can test split immediately
     sp.members['u1']={name:TEST_PEOPLE.u1.name}; sp.members['u2']={name:TEST_PEOPLE.u2.name};
-    data.shared=sp; saveSpace('shared'); render();
+    data.shared=sp; logActivity('shared','🆕','Created shared space',''); saveSpace('shared'); render();
     toast('Shared space created (both test users added)');
   } else {
     const sid='sp_'+uid();
-    sp.id=sid; data.shared=sp;
+    sp.id=sid; data.shared=sp; logActivity('shared','🆕','Created shared space','');
     const updates={};
     updates['shared/'+sid]=stripForSave(sp);
     updates['users/'+user.uid+'/sharedSpace']=sid;
@@ -2127,7 +2188,7 @@ function joinShared(code){
   code=(code||'').trim().toUpperCase();
   if(TEST_MODE){
     const s=JSON.parse(localStorage.getItem('nest_shared')||'null');
-    if(s&&s.inviteCode===code){ s.members[user.uid]={name:user.name}; data.shared=normalizeSpace(s); data.shared.id='shared'; saveSpace('shared'); closeSheet(); render(); toast('Joined shared space'); }
+    if(s&&s.inviteCode===code){ s.members[user.uid]={name:user.name}; data.shared=normalizeSpace(s); data.shared.id='shared'; logActivity('shared','👋','Joined shared space',''); saveSpace('shared'); closeSheet(); render(); toast('Joined shared space'); }
     else toast('No space with that code (test)');
     return;
   }
@@ -2135,8 +2196,13 @@ function joinShared(code){
   db.ref('inviteCodes/'+code).get().then(snap=>{
     const sid=snap.val();
     if(!sid){ toast('Invalid code'); return; }
-    db.ref('shared/'+sid+'/members/'+user.uid).set({name:user.name});
     db.ref('users/'+user.uid+'/sharedSpace').set(sid);
+    const eid=uid();
+    // become a member first, THEN record the join on a child key (so member rules pass, and it
+    // doesn't clobber the shared activity list)
+    db.ref('shared/'+sid+'/members/'+user.uid).set({name:user.name})
+      .then(()=>db.ref('shared/'+sid+'/activity/'+eid).set({id:eid,at:Date.now(),by:user.uid,byName:user.name||'',icon:'👋',action:'Joined shared space',detail:''}))
+      .catch(()=>{});
     closeSheet(); attachShared(sid); render(); toast('Joined!');
   });
 }
@@ -2300,6 +2366,7 @@ function addCatInline(){
   const g=document.getElementById('ncGroup');
   const c={id:uid(), name, icon:(document.getElementById('ncIcon').value.trim()||'•'), type:addDraft.type, group:g?g.value:'need', target:0, useIncomePct:false, targetPct:0};
   sp.categories=asArray(sp.categories); sp.categories.push(c);
+  logActivity(addDraft.space,'🏷️','Added category', (c.icon?c.icon+' ':'')+c.name);
   saveSpace(addDraft.space);
   addDraft.categoryId=c.id;
   toast('Category added');
@@ -2919,6 +2986,7 @@ function saveTx(){
       rule.vendor=d.vendor.trim(); rule.note=d.note.trim(); rule.type=d.type;
       if(isSharedExp){ rule.paidBy=d.paidBy; rule.splitType=d.splitType; rule.customMine=d.customMine; rule.customPct=d.customPct; }
       else { delete rule.paidBy; delete rule.splitType; delete rule.customMine; delete rule.customPct; }
+      logActivity(d.space,'🔁','Edited recurring '+d.type, `${catName(sp,d.categoryId)} · ${fmt(amtR)}`);
       runRecurring(sp);      // catch up any newly-due occurrences under the updated schedule (also saves)
       saveSpace(d.space);
       render();
@@ -2933,6 +3001,7 @@ function saveTx(){
       vendor:d.vendor.trim(), note:d.note.trim(), type:d.type, active:true, lastGen:null};
     if(isSharedExp){ rule.paidBy=d.paidBy; rule.splitType=d.splitType; rule.customMine=d.customMine; rule.customPct=d.customPct; }
     sp.recurring=asArray(sp.recurring); sp.recurring.push(rule);
+    logActivity(d.space,'🔁','Added recurring '+d.type, `${catName(sp,d.categoryId)} · ${fmt(amtR)}`);
     runRecurring(sp); // generates + saves
     render();
     toast('Recurring '+d.type+' added');
@@ -2947,11 +3016,18 @@ function saveTx(){
   sp.transactions=asArray(sp.transactions);
   if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0){ const o=sp.transactions[i]; if(o.recurringId!=null) t.recurringId=o.recurringId; if(o.occ!=null) t.occ=o.occ; sp.transactions[i]=t; } }
   else sp.transactions.push(t);
+  logActivity(d.space, d.type==='income'?'💰':'🧾',
+    (d.id?'Edited ':'Added ')+(d.type==='income'?'income':'expense'),
+    `${catName(sp,d.categoryId)}${d.vendor.trim()?' · '+d.vendor.trim():''} · ${fmt(amtR)}`);
   saveSpace(d.space); render();
   toast(d.id?'Updated':'Added '+fmt(amt));
 }
 function deleteTx(id){
-  const sp=draftSpace(); sp.transactions=asArray(sp.transactions).filter(t=>t.id!==id);
+  const sp=draftSpace(); const old=asArray(sp.transactions).find(t=>t.id===id);
+  sp.transactions=asArray(sp.transactions).filter(t=>t.id!==id);
+  if(old) logActivity(addDraft.space, old.type==='income'?'💰':'🗑️',
+    'Deleted '+(old.type==='income'?'income':'expense'),
+    `${catName(sp,old.categoryId)}${old.vendor?' · '+old.vendor:''} · ${fmt(old.amount)}`);
   saveSpace(addDraft.space); closeSheet(); render(); toast('Deleted');
 }
 
@@ -3033,13 +3109,17 @@ function recordSettle(){
   sp.settlements=asArray(sp.settlements);
   sp.settlements.push({id:uid(), date:todayStr(),
     from:_settleYouPay?user.uid:bal.other, to:_settleYouPay?bal.other:user.uid, amount:Math.round(amt*100)/100});
+  const pName=(sp.members[bal.other]&&sp.members[bal.other].name)||'Partner';
+  logActivity('shared','🤝','Recorded settle-up',(_settleYouPay?'You paid '+pName:pName+' paid you')+' '+fmt(amt));
   saveSpace('shared'); render();
   toast('Recorded '+fmt(amt));
   renderSettleSheet(true); // keep sheet open, refreshed with the new balance + history
 }
 function deleteSettle(id){
   const sp=curSpace(); if(!sp) return;
+  const s=asArray(sp.settlements).find(x=>x.id===id);
   sp.settlements=asArray(sp.settlements).filter(s=>s.id!==id);
+  if(s) logActivity('shared','🗑️','Removed settle-up',fmt(s.amount));
   saveSpace('shared'); render(); renderSettleSheet(true); toast('Removed');
 }
 
@@ -3117,6 +3197,7 @@ function addCat(){
   const name=document.getElementById('ncName').value.trim(); if(!name){toast('Name required');return;}
   const c={id:uid(),name,icon:document.getElementById('ncIcon').value.trim()||'•',type:document.getElementById('ncType').value,group:document.getElementById('ncGroup').value,target:0,useIncomePct:false,targetPct:0};
   curSpace().categories=asArray(curSpace().categories); curSpace().categories.push(c);
+  logActivity(activeSpace,'🏷️','Added category', (c.icon?c.icon+' ':'')+c.name);
   saveSpace(activeSpace); openSheet('managecats'); render(); toast('Category added');
 }
 function openEditCat(id){ const c=catById(curSpace(),id); if(!c) return; openSheetHTML(sheetEditCat(id)); }
@@ -3174,6 +3255,7 @@ function sheetEditCat(id){
 }
 function saveCatEdit(id){
   const c=catById(curSpace(),id); if(!c) return;
+  const prevSeed=+c.poolSeed||0, prevTarget=+c.poolTarget||0, prevDate=c.poolTargetDate||'';   // to describe what changed in the log
   const name=document.getElementById('ecName').value.trim(); if(!name){ toast('Name required'); return; }
   c.name=name; c.icon=document.getElementById('ecIcon').value.trim()||'•';
   const g=document.getElementById('ecGroup'); if(g) c.group=g.value;
@@ -3208,10 +3290,26 @@ function saveCatEdit(id){
       c.poolTargetDate=/^\d{4}-\d{2}$/.test(td)?td:null;
     } else { c.pool=false; }                                   // keep seed/start/goal so re-enabling resumes
   }
+  // log — describe the most meaningful change (fund balance / goal, else a plain edit)
+  let lIcon='🏷️', lAct='Edited category', lDet=(c.icon?c.icon+' ':'')+c.name;
+  if(c.pool){
+    const seedChanged=Math.abs((+c.poolSeed||0)-prevSeed)>0.005;
+    const goalChanged=(+c.poolTarget||0)!==prevTarget || (c.poolTargetDate||'')!==prevDate;
+    if(seedChanged){
+      lIcon='🏦'; lAct='Updated fund balance';
+      const twoPlus=Object.keys((curSpace().members)||{}).length>=2;
+      const mine=(c.poolSeedBy&&c.poolSeedBy[user.uid]!=null)?+c.poolSeedBy[user.uid]||0:null;
+      lDet=(c.icon?c.icon+' ':'')+c.name+' · '+((mine!=null&&twoPlus)?'your balance '+fmt0(mine)+' (combined '+fmt0(c.poolSeed)+')':fmt0(c.poolSeed));
+    } else if(goalChanged){
+      lIcon='🎯'; lAct='Updated fund goal';
+      lDet=(c.icon?c.icon+' ':'')+c.name+(c.poolTarget?' · goal '+fmt0(c.poolTarget)+(c.poolTargetDate?' by '+monthLabel(c.poolTargetDate):''):' · goal cleared');
+    }
+  }
+  logActivity(activeSpace, lIcon, lAct, lDet);
   saveSpace(activeSpace); openSheet('managecats'); render(); toast('Category updated');
 }
 function setCatGroup(id,g){ const c=catById(curSpace(),id); if(c){c.group=g; saveSpace(activeSpace);} }
-function deleteCat(id){ const sp=curSpace(); const used=(sp.transactions||[]).some(t=>t.categoryId===id); if(used){ if(!confirm('This category has transactions. Delete anyway? (transactions stay but show uncategorized)'))return;} sp.categories=asArray(sp.categories).filter(c=>c.id!==id); saveSpace(activeSpace); openSheet('managecats'); render(); }
+function deleteCat(id){ const sp=curSpace(); const gone=catById(sp,id); const used=(sp.transactions||[]).some(t=>t.categoryId===id); if(used){ if(!confirm('This category has transactions. Delete anyway? (transactions stay but show uncategorized)'))return;} sp.categories=asArray(sp.categories).filter(c=>c.id!==id); if(gone) logActivity(activeSpace,'🗑️','Deleted category', (gone.icon?gone.icon+' ':'')+gone.name); saveSpace(activeSpace); openSheet('managecats'); render(); }
 function sheetJoin(){
   return `<div class="grabber"></div><h2>Join a shared space</h2>
     <p class="muted">Enter the invite code your partner gave you.</p>
