@@ -1928,7 +1928,36 @@ function setSavingsGoal(v){ curSpace().settings.savingsGoal=+v||0; logActivity(a
 function setCatMode(id,useP){ const c=catById(curSpace(),id); if(c){c.useIncomePct=useP; saveSpace(activeSpace); render();} }
 function setCatTarget(id,kind,v){ const c=catById(curSpace(),id); if(!c)return; if(kind==='pct')c.targetPct=+v||0; else c.target=+v||0; logActivity(activeSpace,'📊','Set budget',(c.icon?c.icon+' ':'')+c.name+' · '+(kind==='pct'?(+v||0)+'% of income':fmt0(+v||0)+(c.pool?'/mo set-aside':'/mo'))); saveSpace(activeSpace); render(); }
 function toggleRecurring(id){ const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id); if(!r)return; r.active=r.active===false; logActivity(activeSpace,'🔁',(r.active?'Resumed':'Paused')+' recurring',catName(sp,r.categoryId)); if(r.active) runRecurring(sp); else saveSpace(activeSpace); render(); toast(r.active?'Resumed':'Paused'); }
-function deleteRecurring(id){ const sp=curSpace(); if(!confirm('Delete this recurring rule? Entries already added will stay.'))return; const r=asArray(sp.recurring).find(x=>x.id===id); sp.recurring=asArray(sp.recurring).filter(x=>x.id!==id); if(r) logActivity(activeSpace,'🗑️','Deleted recurring',catName(sp,r.categoryId)); saveSpace(activeSpace); render(); toast('Recurring deleted'); }
+function deleteRecurring(id){
+  const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id); if(!r) return;
+  const n=asArray(sp.transactions).filter(t=>t.recurringId===id).length;
+  if(n===0){ // nothing was ever generated — no history distinction to make
+    if(!confirm('Delete this recurring rule?')) return;
+    doDeleteRecurring(id,false); return;
+  }
+  openSheetHTML(deleteRecurringSheetHTML(id, r, n));
+}
+function deleteRecurringSheetHTML(id, r, n){
+  const label=`${catName(curSpace(),r.categoryId)} · ${r.type==='income'?'+':'-'}${fmt(r.amount)} · ${FREQ_LABEL[r.freq]||r.freq}`;
+  return `<div class="grabber"></div>
+    <h2 style="margin:0 0 4px">Delete recurring ${r.type==='income'?'income':'expense'}?</h2>
+    <p class="muted" style="margin:2px 0 14px">${esc(label)}</p>
+    <p style="margin:0 0 14px">This rule has generated <b>${n}</b> ${n===1?'entry':'entries'} so far. What should happen to ${n===1?'it':'them'}?</p>
+    <button class="btn filled" style="width:100%;margin-bottom:9px" onclick="doDeleteRecurring('${id}',false)">🛑 Stop it — keep past ${n===1?'entry':'entries'}</button>
+    <div class="sub" style="margin:-4px 2px 12px">Removes the rule so nothing new is added. The ${n} ${n===1?'entry'
+      :'entries'} already recorded stay in your history.</div>
+    <button class="btn danger" style="width:100%;margin-bottom:9px" onclick="doDeleteRecurring('${id}',true)">🗑️ Delete rule + all ${n} ${n===1?'entry':'entries'}</button>
+    <div class="sub" style="margin:-4px 2px 12px">Also erases every entry this rule created. This can't be undone.</div>
+    <button class="btn text" style="width:100%" onclick="closeSheet()">Cancel</button>`;
+}
+function doDeleteRecurring(id, alsoEntries){
+  const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id);
+  let removed=0;
+  if(alsoEntries){ const before=asArray(sp.transactions).length; sp.transactions=asArray(sp.transactions).filter(t=>t.recurringId!==id); removed=before-sp.transactions.length; }
+  sp.recurring=asArray(sp.recurring).filter(x=>x.id!==id);
+  if(r) logActivity(activeSpace,'🗑️', alsoEntries?'Deleted recurring & history':'Deleted recurring', catName(sp,r.categoryId)+(alsoEntries?` · ${removed} ${removed===1?'entry':'entries'} removed`:' · past entries kept'));
+  saveSpace(activeSpace); closeSheet(); render(); toast(alsoEntries?`Recurring + ${removed} ${removed===1?'entry':'entries'} deleted`:'Recurring deleted');
+}
 
 /* =====================================================================
    VIEW: INSIGHTS
