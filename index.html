@@ -1974,6 +1974,52 @@ function doDeleteRecurring(id, alsoEntries){
   saveSpace(activeSpace); closeSheet(); render(); toast(alsoEntries?`Recurring + ${removed} ${removed===1?'entry':'entries'} deleted`:'Recurring deleted');
 }
 
+// Editing a recurring rule that has already generated entries: ask whether the new details
+// (amount, category, vendor, note, type, split) should also rewrite those past entries or
+// only apply going forward. Works the same in Personal and Shared.
+let pendingRecEdit=null;
+function cancelRecEdit(){ pendingRecEdit=null; closeSheet(); }
+function editRecurringScopeSheetHTML(rule, n){
+  const label=`${catName(curSpace(),rule.categoryId)} · ${rule.type==='income'?'+':'-'}${fmt(rule.amount)} · ${FREQ_LABEL[rule.freq]||rule.freq}`;
+  return `<div class="grabber"></div>
+    <h2 style="margin:0 0 4px">Apply changes to past entries?</h2>
+    <p class="muted" style="margin:2px 0 14px">${esc(label)}</p>
+    <p style="margin:0 0 14px">This rule has already added <b>${n}</b> ${n===1?'entry':'entries'}. Update ${n===1?'it':'them'} to match, or only change entries from now on?</p>
+    <button class="btn filled" style="width:100%;margin-bottom:9px" onclick="applyRecurringEdit(pendingRecEdit,false)">⏭️ Only future entries</button>
+    <div class="sub" style="margin:-4px 2px 12px">The ${n} ${n===1?'entry':'entries'} already recorded stay unchanged; new ones follow the updated details.</div>
+    <button class="btn tonal" style="width:100%;margin-bottom:9px" onclick="applyRecurringEdit(pendingRecEdit,true)">🔄 All entries — past + future</button>
+    <div class="sub" style="margin:-4px 2px 12px">Also rewrites the ${n} past ${n===1?'entry':'entries'} to the new amount, category and details.</div>
+    <button class="btn text" style="width:100%" onclick="cancelRecEdit()">Cancel</button>`;
+}
+function applyRecurringEdit(edit, alsoPast){
+  if(!edit){ closeSheet(); return; }
+  const sp = edit.space==='shared' ? data.shared : data.personal;
+  const rule = sp && asArray(sp.recurring).find(x=>x.id===edit.recId);
+  if(!rule){ pendingRecEdit=null; closeSheet(); render(); return; }
+  rule.freq=edit.freq; rule.anchor=edit.anchor; rule.amount=edit.amount; rule.categoryId=edit.categoryId;
+  rule.vendor=edit.vendor; rule.note=edit.note; rule.type=edit.type;
+  if(edit.isSharedExp){ rule.paidBy=edit.paidBy; rule.splitType=edit.splitType; rule.customMine=edit.customMine; rule.customPct=edit.customPct; }
+  else { delete rule.paidBy; delete rule.splitType; delete rule.customMine; delete rule.customPct; }
+  let updated=0;
+  if(alsoPast){
+    asArray(sp.transactions).forEach(t=>{
+      if(t.recurringId!==edit.recId) return;
+      t.amount=edit.amount; t.categoryId=edit.categoryId; t.vendor=edit.vendor; t.note=edit.note; t.type=edit.type;
+      if(edit.isSharedExp){ t.paidBy=edit.paidBy||user.uid; t.split=computeSplit(sp,edit.amount,t.paidBy,edit.splitType||'equal',edit.customMine,edit.customPct); }
+      else { delete t.paidBy; delete t.split; }
+      updated++;
+    });
+  }
+  logActivity(edit.space,'🔁','Edited recurring '+edit.type,
+    `${catName(sp,edit.categoryId)} · ${fmt(edit.amount)}`
+    + (alsoPast?` · ${updated} past ${updated===1?'entry':'entries'} updated` : (edit.hadPast?' · future only':'')));
+  runRecurring(sp);      // catch up any newly-due occurrences under the updated schedule (also saves)
+  saveSpace(edit.space);
+  pendingRecEdit=null;
+  closeSheet(); render();
+  toast(alsoPast?`Recurring + ${updated} past ${updated===1?'entry':'entries'} updated`:'Recurring updated');
+}
+
 /* =====================================================================
    VIEW: INSIGHTS
    ===================================================================== */
@@ -3055,15 +3101,18 @@ function saveTx(){
   if(d.recId){
     const rule=asArray(sp.recurring).find(x=>x.id===d.recId);
     if(rule){
-      rule.freq=d.repeat; rule.anchor=d.date; rule.amount=amtR; rule.categoryId=d.categoryId;
-      rule.vendor=d.vendor.trim(); rule.note=d.note.trim(); rule.type=d.type;
-      if(isSharedExp){ rule.paidBy=d.paidBy; rule.splitType=d.splitType; rule.customMine=d.customMine; rule.customPct=d.customPct; }
-      else { delete rule.paidBy; delete rule.splitType; delete rule.customMine; delete rule.customPct; }
-      logActivity(d.space,'🔁','Edited recurring '+d.type, `${catName(sp,d.categoryId)} · ${fmt(amtR)}`);
-      runRecurring(sp);      // catch up any newly-due occurrences under the updated schedule (also saves)
-      saveSpace(d.space);
-      render();
-      toast('Recurring updated');
+      const genN=asArray(sp.transactions).filter(t=>t.recurringId===rule.id).length;
+      // did anything that lives on the generated entries change? (schedule-only edits never
+      // affect past entries, so there's nothing to ask about)
+      const contentChanged = rule.amount!==amtR || rule.categoryId!==d.categoryId
+        || (rule.vendor||'')!==d.vendor.trim() || (rule.note||'')!==d.note.trim() || rule.type!==d.type
+        || (isSharedExp && (rule.paidBy!==d.paidBy || rule.splitType!==d.splitType || rule.customMine!==d.customMine || rule.customPct!==d.customPct));
+      const edit={ space:d.space, recId:d.recId, freq:d.repeat, anchor:d.date, amount:amtR,
+        categoryId:d.categoryId, vendor:d.vendor.trim(), note:d.note.trim(), type:d.type,
+        isSharedExp, paidBy:d.paidBy, splitType:d.splitType, customMine:d.customMine, customPct:d.customPct,
+        hadPast:genN>0 };
+      if(genN>0 && contentChanged){ pendingRecEdit=edit; openSheetHTML(editRecurringScopeSheetHTML(rule, genN)); }
+      else applyRecurringEdit(edit, false);   // nothing generated yet, or schedule-only change
     }
     return;
   }
