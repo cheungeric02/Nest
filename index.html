@@ -1037,6 +1037,15 @@ function buildDefaultCats(){
    HELPERS
    ===================================================================== */
 function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+// Creation-time proxy for ordering same-day entries newest-first. Prefers the stored `at`
+// stamp; otherwise decodes the uid's base36 time prefix (uid() is `Date.now()`-prefixed).
+// Strips a `shr_` prefix so reflected shared→personal rows decode their source id.
+function txOrder(t){
+  if(t && typeof t.at==='number') return t.at;
+  const id=String((t&&t.id)||'').replace(/^shr_/,'');
+  const n=parseInt(id.slice(0,8),36);
+  return isFinite(n)?n:0;
+}
 function ymKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -1676,7 +1685,10 @@ function viewTx(){
   </div>`;
   if(txView==='changes') return toggle+viewActivityLog(sp);
   let h=toggle+monthNav();
-  const mtx=effMonthTx(sp,viewMonth).slice().sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+  const mtx=effMonthTx(sp,viewMonth).slice().sort((a,b)=>{
+    const d=(b.date||'').localeCompare(a.date||''); if(d) return d;   // newer day first
+    return txOrder(b)-txOrder(a);                                     // within a day, newest-added first
+  });
   // categories present in this month, for the filter dropdown
   const present=[...new Set(mtx.map(t=>t.categoryId).filter(Boolean))]
     .map(id=>({id,c:catById(sp,id)})).filter(x=>x.c)
@@ -3070,12 +3082,13 @@ function saveTx(){
   }
 
   const t={id:d.id||uid(), date:d.date, amount:amtR, categoryId:d.categoryId, vendor:d.vendor.trim(), note:d.note.trim(), type:d.type};
+  if(!d.id) t.at=Date.now();          // creation timestamp → orders same-day entries newest-first in the Activity tab
   if(isSharedExp){
     t.paidBy=d.paidBy;
     t.split=computeSplit(sp,amtR,d.paidBy,d.splitType,d.customMine,d.customPct);
   }
   sp.transactions=asArray(sp.transactions);
-  if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0){ const o=sp.transactions[i]; if(o.recurringId!=null) t.recurringId=o.recurringId; if(o.occ!=null) t.occ=o.occ; sp.transactions[i]=t; } }
+  if(d.id){ const i=sp.transactions.findIndex(x=>x.id===d.id); if(i>=0){ const o=sp.transactions[i]; if(o.recurringId!=null) t.recurringId=o.recurringId; if(o.occ!=null) t.occ=o.occ; if(o.at!=null) t.at=o.at; sp.transactions[i]=t; } }
   else sp.transactions.push(t);
   logActivity(d.space, d.type==='income'?'💰':'🧾',
     (d.id?'Edited ':'Added ')+(d.type==='income'?'income':'expense'),
