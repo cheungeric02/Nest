@@ -484,6 +484,19 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .testbar{background:var(--secondary-container);color:var(--on-secondary-container);font-size:.78rem;padding:6px 16px;text-align:center;font-weight:600}
 .member-badge{font-size:.7rem;padding:2px 8px;border-radius:var(--r-full);background:var(--surface-container-high);color:var(--on-surface-variant)}
 
+/* patch notes / what's new */
+.pn-list{display:flex;flex-direction:column;gap:10px}
+.pn-list-scroll{max-height:300px;overflow-y:auto;padding-right:2px}
+.pn-entry{border:1px solid var(--outline-variant);border-radius:var(--r-md);padding:10px 12px;background:var(--surface-container-high)}
+.pn-entry.current{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary) inset}
+.pn-head{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px}
+.pn-v{font-size:.72rem;font-weight:800;padding:2px 8px;border-radius:var(--r-full);background:var(--primary);color:var(--on-primary)}
+.pn-title{font-weight:700}
+.pn-badge{font-size:.66rem;font-weight:700;padding:2px 7px;border-radius:var(--r-full);background:var(--surface-container);color:var(--primary);border:1px solid var(--primary)}
+.pn-date{margin-left:auto;font-size:.74rem;color:var(--on-surface-variant)}
+.pn-notes{margin:8px 0 0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.pn-notes li{font-size:.85rem;color:var(--on-surface-variant);line-height:1.35}
+
 /* responsive: unfolded / tablet */
 @media(min-width:700px){
   .sum-grid{gap:14px}
@@ -596,6 +609,106 @@ const firebaseConfig = {
   appId: "1:312747137679:web:77adced4cd0bc8f8c4eefa"
 };
 
+/* =====================================================================
+   VERSION + PATCH NOTES
+   APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
+   together on every release. PATCH_NOTES is newest-first.
+   ===================================================================== */
+const APP_VERSION = 14;
+const PATCH_NOTES = [
+  { v:14, date:'2026-09-21', title:'Patch Notes & What’s New', notes:[
+    'See every update in Settings → Patch Notes, newest first.',
+    'A one-time “What’s New” note now pops up after each update.' ] },
+  { v:13, date:'2026-09-14', title:'Activity history & smarter recurring', notes:[
+    'New Activity → Changes log — your Personal history stays private, Shared history is visible to both of you.',
+    'Deleting or editing a recurring entry now asks whether to include past entries or only future ones.',
+    'Same-day entries list newest first; Shared Insights switched to expense-only charts.' ] },
+  { v:12, date:'2026-09-12', title:'Savings goals & simpler Shared home', notes:[
+    'Savings pools show a target, an ETA, and a “balance as of” date; a house down-payment can be split per partner.',
+    'Shared Home slimmed down: dropped the income tiles and 50/30/20 card, settle-up is now a one-line widget.' ] },
+  { v:11, date:'2026-09-11', title:'Settle-up & shared budgeting', notes:[
+    'Record partial settle-up transfers with direction and a running history.',
+    'Shared Home’s on-pace card reframed around spend-vs-budget.' ] },
+  { v:10, date:'2026-09-10', title:'Period selectors', notes:[
+    'Budget-vs-actual on Home and the Insights actuals card can now show trailing 3 / 6 / 12 months, YTD, or a custom range.' ] },
+  { v:9, date:'2026-09-08', title:'CSV statement import', notes:[
+    'Import transactions from a bank CSV with a reconciliation review step.',
+    'The review list keeps its place and has Select / Deselect all.' ] },
+  { v:8, date:'2026-09-07', title:'Savings pools & favourites', notes:[
+    'Add running “savings pool” categories (sinking funds) tracked on a running balance instead of monthly.',
+    'Star ⭐ favourites for one-tap quick-add.' ] },
+  { v:7, date:'2026-09-07', title:'Navigation & dates', notes:[
+    'Bigger raised center ＋ button; the phone back-gesture no longer exits the app.',
+    'Dates now shown month-day-year throughout.' ] },
+  { v:6, date:'2026-09-07', title:'Insights & budget bars', notes:[
+    'Redesigned Insights with an Income · Expenses · Savings chart and a compact 6-month trend.',
+    'Clearer green / amber / red budget bars.' ] },
+  { v:5, date:'2026-09-07', title:'Planning tools', notes:[
+    'Project your end-of-month leftover on Home.',
+    'Plan gained an income-split donut and %-of-income budgets.' ] },
+  { v:4, date:'2026-09-07', title:'Data safety', notes:[
+    'Honest save status, an on-device backup mirror, and cloud + local backups with restore.',
+    'Fixed an edit that could fail to save to the cloud.' ] },
+  { v:3, date:'2026-09-07', title:'Add flow & categories', notes:[
+    'Add sheet gained a Personal / Shared chooser and custom % split.',
+    'Calculator math in the amount field; edit and create categories, including an inline ＋ New.' ] },
+  { v:2, date:'2026-09-06', title:'Live & recurring', notes:[
+    'Went live with Google sign-in and cloud sync.',
+    'Bi-weekly paycheck income, 50/30/20 recommended budgets, and recurring entries with shared→personal reflection.' ] },
+  { v:1, date:'2026-09-06', title:'Nest launches', notes:[
+    'First release: a budget planner with Personal and Shared spaces, categories, and quick add.' ] },
+];
+const LAST_SEEN_KEY = 'nest_lastSeenVer';   // namespaced: all my apps share one github.io localStorage
+let HAD_PRIOR_DATA = false;                  // set at boot start, before any seeding, from existing nest_ data keys
+
+// One shared renderer for a single patch-notes entry (used by Settings AND the popup).
+function patchEntryHTML(e, isCurrent){
+  const bullets = (e.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('');
+  return `<div class="pn-entry${isCurrent?' current':''}">
+    <div class="pn-head">
+      <span class="pn-v">v${esc(e.v)}</span>
+      <span class="pn-title">${esc(e.title)}</span>
+      ${isCurrent?'<span class="pn-badge">Current</span>':''}
+      <span class="pn-date">${esc(e.date)}</span>
+    </div>
+    ${bullets?`<ul class="pn-notes">${bullets}</ul>`:''}
+  </div>`;
+}
+function patchNotesListHTML(){
+  return PATCH_NOTES.map(e=>patchEntryHTML(e, e.v===APP_VERSION)).join('');
+}
+function whatsNewSheetHTML(entries){
+  const list = entries.map(e=>patchEntryHTML(e, e.v===APP_VERSION)).join('');
+  return `<div class="grabber"></div>
+    <h2 style="margin:0 0 2px">✨ What’s New</h2>
+    <p class="sub" style="margin:0 0 14px">Here’s what changed since you were last here.</p>
+    <div class="pn-list">${list}</div>
+    <button class="btn filled" style="width:100%;margin-top:14px" onclick="closeSheet()">Got it</button>`;
+}
+// Show the "What's New" popup at most once per release. All localStorage access is
+// try/caught so a private-mode / blocked store just skips the popup silently.
+let whatsNewChecked=false;
+function maybeShowWhatsNew(){
+  if(whatsNewChecked) return; whatsNewChecked=true;
+  let last=null;
+  try{ const raw=localStorage.getItem(LAST_SEEN_KEY); if(raw!=null) last=parseInt(raw,10); }
+  catch(e){ return; }   // can't read the store → never risk showing it every load
+  if(last!=null && !isFinite(last)) last=null;
+  // Fresh install (no prior Nest data at boot): record silently, no popup.
+  if(last==null && !HAD_PRIOR_DATA){ try{ localStorage.setItem(LAST_SEEN_KEY, String(APP_VERSION)); }catch(e){} return; }
+  // Existing user already current: nothing to show.
+  if(last!=null && last>=APP_VERSION) return;
+  // Which entries to show: existing pre-feature user (no key) → latest only;
+  // otherwise the full delta of everything newer than what they last saw.
+  const entries = (last==null)
+    ? PATCH_NOTES.slice(0,1)
+    : PATCH_NOTES.filter(e=>e.v>last);
+  if(!entries.length){ try{ localStorage.setItem(LAST_SEEN_KEY, String(APP_VERSION)); }catch(e){} return; }
+  // Write the seen marker the moment we show it, so it appears exactly once.
+  try{ localStorage.setItem(LAST_SEEN_KEY, String(APP_VERSION)); }catch(e){}
+  openSheetHTML(whatsNewSheetHTML(entries));
+}
+
 /* ---------- safe storage (localStorage throws inside data: URLs / private mode) ---------- */
 const _mem = {};
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return (k in _mem)?_mem[k]:null; } }
@@ -678,6 +791,14 @@ function blankSpace(){
    BOOT
    ===================================================================== */
 window.addEventListener('DOMContentLoaded', ()=>{
+  // Capture whether any prior Nest data exists BEFORE boot seeds/writes anything,
+  // so a brand-new install can be told apart from an existing user (drives What's New).
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k && /^nest_(personal|shared|mirror_|localbk_)/.test(k)){ HAD_PRIOR_DATA=true; break; }
+    }
+  }catch(e){ HAD_PRIOR_DATA=true; }   // if we can't read, assume existing so we don't silently swallow real updates
   initTheme();
   initSheetGesture();
   initAmountKeyboard();
@@ -1075,6 +1196,7 @@ function showApp(){
   updTestbar();
   render();
   armNavGuard();                 // start catching the phone back-gesture now that the app is open
+  maybeShowWhatsNew();           // one-time "What's New" popup after a version bump (guarded, once per open)
 }
 function updTestbar(){
   if(!TEST_MODE) return;
@@ -3283,7 +3405,11 @@ function sheetSettings(){
     <button class="btn outline block mb8" onclick="exportData()">⬇️ Export backup (JSON)</button>
     ${TEST_MODE?`<button class="btn danger block" onclick="resetTest()">Reset test data</button>`:`<button class="btn danger block" onclick="doSignOut()">Sign out</button>`}
   </div>`;
-  h+=`<div class="sub" style="text-align:center;margin-top:8px">Nest · ${TEST_MODE?'test mode':'v1'}</div>`;
+  h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
+    <div class="between mb8"><h3 style="margin:0">Patch Notes</h3><span class="pn-v">v${APP_VERSION}</span></div>
+    <div class="pn-list pn-list-scroll">${patchNotesListHTML()}</div>
+  </div>`;
+  h+=`<div class="sub" style="text-align:center;margin-top:8px">Nest · ${TEST_MODE?'test mode · ':''}v${APP_VERSION}</div>`;
   return h;
 }
 function sheetManageCats(){
