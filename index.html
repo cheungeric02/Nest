@@ -614,8 +614,11 @@ const firebaseConfig = {
    APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
    together on every release. PATCH_NOTES is newest-first.
    ===================================================================== */
-const APP_VERSION = 15;
+const APP_VERSION = 16;
 const PATCH_NOTES = [
+  { v:16, date:'2026-10-05', title:'Lend money in Shared', notes:[
+    'New in Shared: record when one of you lends the other cash. Open the settle-up card and switch to “💸 Lend money”.',
+    'A loan adds to what the borrower owes and shows up in the Activity feed and settle-up history as “You lent …” / “… lent you”, kept distinct from a repayment.' ] },
   { v:15, date:'2026-10-05', title:'Paid-for-partner split', notes:[
     'New Shared split option: “Paid for …” — when one of you covers something entirely for the other (forgot your wallet), the whole amount goes on their side.',
     'The Activity feed now spells out who paid for whom, and settle-up updates automatically.' ] },
@@ -1473,17 +1476,15 @@ function viewHome(){
   if(activeSpace==='shared'){ const bal=settleBalance(sp); if(bal){
     const partnerOwesYou = bal.net>0.005;
     const hasBal = Math.abs(bal.net)>=0.01;
-    const nSet = (sp.settlements||[]).length;
-    const clickable = hasBal || nSet>0;
     const txt = !hasBal
       ? `🤝 You're even with ${bal.otherName}`
       : partnerOwesYou
         ? `🤝 ${bal.otherName} owes you <b>${fmt(bal.net)}</b>`
         : `🤝 You owe ${bal.otherName} <b>${fmt(-bal.net)}</b>`;
-    const act = hasBal ? 'Settle ›' : (nSet>0 ? 'History ›' : '');
-    h+=`<div class="card settle-mini${clickable?'':' static'}" ${clickable?'onclick="openSettle()"':''}>
+    const act = hasBal ? 'Settle ›' : 'Lend ›';
+    h+=`<div class="card settle-mini" onclick="openTransfer()">
       <span class="sm-txt">${txt}</span>
-      ${act?`<span class="sm-act">${act}</span>`:''}
+      <span class="sm-act">${act}</span>
     </div>`;
   }}
 
@@ -3304,15 +3305,28 @@ function deleteTx(id){
 }
 
 /* =====================================================================
-   SETTLE UP
+   TRANSFERS — settle-ups & loans
    ===================================================================== */
-// true = you pay partner; false = partner pays you.
+// _settleYouPay: true = money flows You -> partner; false = partner -> You.
+// _transferMode: 'settle' (pay down an existing balance) | 'lend' (hand over cash the
+//   other person will owe back). Both are the same transfer on the net balance — only the
+//   wording, icon and defaults differ — so a loan is stored as a settlement with kind:'loan'.
 let _settleYouPay = true;
-function openSettle(){
+let _transferMode = 'settle';
+function openTransfer(forceMode){
   const sp=curSpace(); const bal=settleBalance(sp); if(!bal) return;
-  // default direction: whoever owes pays (you owe -> you pay; partner owes you -> they pay).
-  _settleYouPay = bal.net<=0;
+  _transferMode = forceMode || (Math.abs(bal.net)>=0.01 ? 'settle' : 'lend');
+  // settle: whoever owes pays. lend: you lend by default (You -> partner).
+  _settleYouPay = _transferMode==='lend' ? true : (bal.net<=0);
   renderSettleSheet(true);
+}
+function openSettle(){ openTransfer(); } // mini-widget entry; auto-picks settle vs lend
+function setTransferMode(m){
+  if(_transferMode===m) return;
+  _transferMode=m;
+  const bal=settleBalance(curSpace());
+  _settleYouPay = m==='lend' ? true : (bal? bal.net<=0 : true);
+  renderSettleSheet(false);
 }
 function settleSwap(){ _settleYouPay=!_settleYouPay; renderSettleSheet(false); }
 function settleEvenAmt(bal){ return _settleYouPay ? Math.max(0,-bal.net) : Math.max(0,bal.net); }
@@ -3323,41 +3337,49 @@ function settleFull(){
 function fmtDay(ds){ return ds? new Date(ds+'T00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}) : ''; }
 function renderSettleSheet(resetAmt){
   const sp=curSpace(); const bal=settleBalance(sp); if(!bal){ closeSheet(); return; }
+  const lend=_transferMode==='lend';
   const payer=_settleYouPay?'You':bal.otherName;
   const payee=_settleYouPay?bal.otherName:'You';
   const even=settleEvenAmt(bal);
-  const cur = resetAmt ? even : (parseFloat((document.getElementById('settleAmt')||{}).value)||0);
+  const cur = resetAmt ? (lend?0:even) : (parseFloat((document.getElementById('settleAmt')||{}).value)||0);
   const bLine = Math.abs(bal.net)<0.01 ? `You're all settled with ${bal.otherName}.`
      : bal.net>0 ? `${bal.otherName} currently owes you <b>${fmt(bal.net)}</b>.`
      : `You currently owe ${bal.otherName} <b>${fmt(-bal.net)}</b>.`;
+  // history — settle-ups and loans together, each labelled
   const sets=(sp.settlements||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   let hist='';
   if(sets.length){
-    hist=`<div class="settle-hist"><div class="sub" style="margin:16px 0 4px;font-weight:700;color:var(--on-surface)">Past settle-ups</div>`;
+    hist=`<div class="settle-hist"><div class="sub" style="margin:16px 0 4px;font-weight:700;color:var(--on-surface)">History</div>`;
     sets.forEach(s=>{
-      const youPaid = s.from===user.uid;
-      const nm=(sp.members[youPaid?s.to:s.from]&&sp.members[youPaid?s.to:s.from].name)||bal.otherName;
-      const dir = youPaid?`You paid ${nm}`:`${nm} paid you`;
-      hist+=`<div class="settle-row"><div><b>${fmt(+s.amount||0)}</b> <span class="muted">· ${dir}</span><div class="sub">${fmtDay(s.date)}</div></div>
-        <button class="settle-del" onclick="deleteSettle('${s.id}')" title="Delete this settle-up">🗑️</button></div>`;
+      const youFrom = s.from===user.uid;
+      const nm=(sp.members[youFrom?s.to:s.from]&&sp.members[youFrom?s.to:s.from].name)||bal.otherName;
+      const isLoan = s.kind==='loan';
+      const verb = isLoan ? (youFrom?`You lent ${nm}`:`${nm} lent you`) : (youFrom?`You paid ${nm}`:`${nm} paid you`);
+      hist+=`<div class="settle-row"><div><b>${fmt(+s.amount||0)}</b> <span class="muted">· ${isLoan?'💸':'🤝'} ${verb}</span><div class="sub">${fmtDay(s.date)}</div></div>
+        <button class="settle-del" onclick="deleteSettle('${s.id}')" title="Delete this entry">🗑️</button></div>`;
     });
     hist+=`</div>`;
   }
-  const html=`<div class="grabber"></div><h2>Record a settle-up</h2>
-    <p class="muted">${bLine} Log the whole amount, or just a portion.</p>
+  const dirVerb = lend ? (_settleYouPay?'You lend':payer+' lends') : (_settleYouPay?'You transfer':payer+' transfers');
+  const html=`<div class="grabber"></div><h2>${lend?'Lend money':'Record a settle-up'}</h2>
+    <div class="flex" style="gap:8px;margin:0 0 12px">
+      <button class="chip${lend?'':' active'}" style="flex:1;text-align:center" onclick="setTransferMode('settle')">🤝 Settle up</button>
+      <button class="chip${lend?' active':''}" style="flex:1;text-align:center" onclick="setTransferMode('lend')">💸 Lend money</button>
+    </div>
+    <p class="muted">${lend?`Record cash one of you fronts the other — the borrower will owe it back. `:''}${bLine}${lend?'':' Log the whole amount, or just a portion.'}</p>
     <div class="settle-dir">
       <span class="settle-who">${payer}</span>
-      <button class="settle-swap" onclick="settleSwap()" title="Swap who's paying">→</button>
+      <button class="settle-swap" onclick="settleSwap()" title="Swap direction">→</button>
       <span class="settle-who">${payee}</span>
     </div>
-    <div class="sub" style="text-align:center;margin:0 0 14px">${_settleYouPay?'You transfer':payer+' transfers'} money to ${payee} · tap → to swap</div>
-    <div class="field"><label>Transfer amount</label>
+    <div class="sub" style="text-align:center;margin:0 0 14px">${dirVerb} money to ${payee} · tap → to swap</div>
+    <div class="field"><label>${lend?'Loan amount':'Transfer amount'}</label>
       <div class="flex"><span class="muted">${CUR_SYMBOL}</span>
         <input id="settleAmt" class="input" type="number" inputmode="decimal" step="0.01" value="${cur>0?cur.toFixed(2):''}" oninput="settlePreview()" placeholder="0.00"></div>
-      ${even>0.005?`<button class="btn text" style="padding:8px 0;font-size:.82rem" onclick="settleFull()">Pay in full · ${fmt(even)}</button>`:''}
+      ${(!lend&&even>0.005)?`<button class="btn text" style="padding:8px 0;font-size:.82rem" onclick="settleFull()">Pay in full · ${fmt(even)}</button>`:''}
     </div>
     <div id="settlePrev" class="settle-prev"></div>
-    <button class="btn filled block" onclick="recordSettle()">Record transfer</button>
+    <button class="btn filled block" onclick="recordSettle()">${lend?'Record loan':'Record transfer'}</button>
     ${hist}`;
   openSheetHTML(html);
   settlePreview();
@@ -3365,24 +3387,34 @@ function renderSettleSheet(resetAmt){
 function settlePreview(){
   const bal=settleBalance(curSpace()); if(!bal) return;
   const el=document.getElementById('settlePrev'); if(!el) return;
+  const lend=_transferMode==='lend';
   const amt=parseFloat((document.getElementById('settleAmt')||{}).value)||0;
   const newNet = _settleYouPay ? bal.net+amt : bal.net-amt;
   let msg='';
   if(amt>0){
-    if(Math.abs(newNet)<0.01) msg=`✅ After this, you'll be all settled.`;
-    else if(newNet>0) msg=`After this, ${bal.otherName} will owe you <b>${fmt(newNet)}</b>.`;
-    else msg=`After this, you'll owe ${bal.otherName} <b>${fmt(-newNet)}</b>.`;
+    if(lend){
+      const tail = Math.abs(newNet)<0.01 ? `you'll be even.`
+        : newNet>0 ? `${bal.otherName} will owe you <b>${fmt(newNet)}</b> total.`
+        : `you'll owe ${bal.otherName} <b>${fmt(-newNet)}</b> total.`;
+      msg = (_settleYouPay?`You lend ${bal.otherName} <b>${fmt(amt)}</b> — `:`${bal.otherName} lends you <b>${fmt(amt)}</b> — `) + tail;
+    } else {
+      if(Math.abs(newNet)<0.01) msg=`✅ After this, you'll be all settled.`;
+      else if(newNet>0) msg=`After this, ${bal.otherName} will owe you <b>${fmt(newNet)}</b>.`;
+      else msg=`After this, you'll owe ${bal.otherName} <b>${fmt(-newNet)}</b>.`;
+    }
   }
   el.innerHTML=msg;
 }
 function recordSettle(){
   const sp=curSpace(); const bal=settleBalance(sp); if(!bal) return;
   const amt=parseFloat(document.getElementById('settleAmt').value)||0; if(amt<=0){toast('Enter an amount');return;}
+  const lend=_transferMode==='lend';
   sp.settlements=asArray(sp.settlements);
-  sp.settlements.push({id:uid(), date:todayStr(),
+  sp.settlements.push({id:uid(), date:todayStr(), kind: lend?'loan':'settle',
     from:_settleYouPay?user.uid:bal.other, to:_settleYouPay?bal.other:user.uid, amount:Math.round(amt*100)/100});
   const pName=(sp.members[bal.other]&&sp.members[bal.other].name)||'Partner';
-  logActivity('shared','🤝','Recorded settle-up',(_settleYouPay?'You paid '+pName:pName+' paid you')+' '+fmt(amt));
+  if(lend) logActivity('shared','💸','Recorded a loan',(_settleYouPay?'You lent '+pName:pName+' lent you')+' '+fmt(amt));
+  else logActivity('shared','🤝','Recorded settle-up',(_settleYouPay?'You paid '+pName:pName+' paid you')+' '+fmt(amt));
   saveSpace('shared'); render();
   toast('Recorded '+fmt(amt));
   renderSettleSheet(true); // keep sheet open, refreshed with the new balance + history
@@ -3391,7 +3423,7 @@ function deleteSettle(id){
   const sp=curSpace(); if(!sp) return;
   const s=asArray(sp.settlements).find(x=>x.id===id);
   sp.settlements=asArray(sp.settlements).filter(s=>s.id!==id);
-  if(s) logActivity('shared','🗑️','Removed settle-up',fmt(s.amount));
+  if(s) logActivity('shared','🗑️', s.kind==='loan'?'Removed a loan':'Removed settle-up',fmt(s.amount));
   saveSpace('shared'); render(); renderSettleSheet(true); toast('Removed');
 }
 
