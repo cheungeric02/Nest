@@ -614,8 +614,11 @@ const firebaseConfig = {
    APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
    together on every release. PATCH_NOTES is newest-first.
    ===================================================================== */
-const APP_VERSION = 14;
+const APP_VERSION = 15;
 const PATCH_NOTES = [
+  { v:15, date:'2026-10-05', title:'Paid-for-partner split', notes:[
+    'New Shared split option: “Paid for …” — when one of you covers something entirely for the other (forgot your wallet), the whole amount goes on their side.',
+    'The Activity feed now spells out who paid for whom, and settle-up updates automatically.' ] },
   { v:14, date:'2026-09-21', title:'Patch Notes & What’s New', notes:[
     'See every update in Settings → Patch Notes, newest first.',
     'A one-time “What’s New” note now pops up after each update.' ] },
@@ -1272,6 +1275,7 @@ const FREQ_LABEL={weekly:'Weekly', biweekly:'Every 2 weeks', monthly:'Monthly', 
 function computeSplit(sp,amt,paidBy,splitType,customMine,customPct){
   const mem=Object.keys(sp.members||{}); const other=mem.find(m=>m!==paidBy); const partner=mem.find(m=>m!==user.uid);
   if(splitType==='full') return {type:'full',shares:{[paidBy]:amt,[other]:0}};
+  if(splitType==='forother') return {type:'forother',shares:{[paidBy]:0,[other]:amt}}; // payer paid, but it's entirely the other person's → they owe it all
   if(splitType==='custom'){ const mine=parseFloat(customMine)||0; const theirs=Math.round((amt-mine)*100)/100; return {type:'custom',shares:{[user.uid]:mine,[partner]:theirs}}; }
   if(splitType==='custompct'){ const pct=Math.max(0,Math.min(100,parseFloat(customPct)||0)); const mine=Math.round(amt*pct/100*100)/100; const theirs=Math.round((amt-mine)*100)/100; return {type:'custompct',pct,shares:{[user.uid]:mine,[partner]:theirs}}; }
   const half=Math.round(amt/2*100)/100; return {type:'equal',shares:{[paidBy]:amt-half,[other]:half}};
@@ -1886,7 +1890,17 @@ function viewActivityLog(sp){
   return h;
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-function paidByName(sp,t){ if(!t.paidBy) return ''; if(t.paidBy===user.uid) return 'You paid'; const m=sp.members[t.paidBy]; return (m&&m.name?m.name:'Partner')+' paid'; }
+function paidByName(sp,t){
+  if(!t.paidBy) return '';
+  const payerName = t.paidBy===user.uid ? 'You' : ((sp.members[t.paidBy]&&sp.members[t.paidBy].name)||'Partner');
+  // "Paid for the other person" → spell out the direction so the shared feed shows who bought for whom.
+  if(t.split && t.split.type==='forother'){
+    const other=Object.keys(sp.members||{}).find(u=>u!==t.paidBy);
+    const otherName = other===user.uid ? 'you' : ((other&&sp.members[other]&&sp.members[other].name)||'partner');
+    return `${payerName} paid for ${otherName}`;
+  }
+  return payerName==='You' ? 'You paid' : payerName+' paid';
+}
 function openReflected(srcId){ activeSpace='shared'; render(); if(srcId) openEdit(srcId); }
 
 /* =====================================================================
@@ -2552,6 +2566,7 @@ function renderAddSheet(){
     <div class="field"><label>Split</label><div class="chips">
       <button class="chip ${d.splitType==='equal'?'active':''}" onclick="setSplit('equal')">50 / 50</button>
       <button class="chip ${d.splitType==='full'?'active':''}" onclick="setSplit('full')">Payer covers all</button>
+      <button class="chip ${d.splitType==='forother'?'active':''}" onclick="setSplit('forother')">🙌 ${d.paidBy===user.uid?('Paid for '+esc((members.find(m=>m.uid!==user.uid)||{name:'partner'}).name)):((members.find(m=>m.uid!==user.uid)||{name:'Partner'}).name+' paid for you')}</button>
       <button class="chip ${d.splitType==='custom'?'active':''}" onclick="setSplit('custom')">Custom ${CUR_SYMBOL}</button>
       <button class="chip ${d.splitType==='custompct'?'active':''}" onclick="setSplit('custompct')">Custom %</button>
     </div>
@@ -3127,8 +3142,20 @@ function impFirstExpenseCat(sp){
 function setDraftPayer(u){ addDraft.paidBy=u; renderAddSheet(!!addDraft.id); }
 function setSplit(s){ addDraft.splitType=s; renderAddSheet(!!addDraft.id); }
 function setRepeat(r){ addDraft.repeat=r; renderAddSheet(!!addDraft.id); }
+function partnerDisplayName(){
+  const sp=data.shared; if(!sp||!sp.members) return 'Partner';
+  const o=Object.keys(sp.members).find(u=>u!==user.uid);
+  return (o&&sp.members[o]&&sp.members[o].name)||'Partner';
+}
 function splitHintText(d){
   const amt=evalExpr(d.amount)||0; if(!isFinite(amt)||amt<=0) return '';
+  // "Paid for the other person" reads as a sentence so the who-owes-who is obvious.
+  if(d.splitType==='forother'){
+    const pn=partnerDisplayName();
+    return d.paidBy===user.uid
+      ? `You paid ${fmt(amt)} for ${pn} — they'll owe you ${fmt(amt)}.`
+      : `${pn} paid ${fmt(amt)} for you — you'll owe them ${fmt(amt)}.`;
+  }
   let mine=null;
   if(d.splitType==='custompct'){ const p=Math.max(0,Math.min(100,parseFloat(d.customPct)||0)); mine=amt*p/100; }
   else if(d.splitType==='custom'){ mine=parseFloat(d.customMine)||0; }
