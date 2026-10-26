@@ -435,6 +435,19 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .key:active{background:var(--primary-container)}
 .key.op{background:var(--surface-container-highest);color:var(--primary);font-weight:800}
 .key.op:active{background:var(--primary-container);color:var(--on-primary-container)}
+.rc-row{display:flex;gap:8px;flex-wrap:wrap;align-items:stretch}
+.rc-thumb{position:relative;width:72px;height:72px;border-radius:var(--r-md);overflow:hidden;background:var(--surface-container-high);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.rc-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.rc-ph{font-size:1.3rem}
+.rc-x{position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;font-size:.7rem;line-height:22px;padding:0;cursor:pointer}
+.rc-add{width:72px;height:72px;border-radius:var(--r-md);border:1.5px dashed var(--outline-variant);background:transparent;color:var(--on-surface-variant);font:inherit;font-size:.72rem;font-weight:600;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;cursor:pointer}
+.rc-add span{font-size:1.3rem}
+.rc-add:active{background:var(--surface-container-high)}
+.rc-viewer{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;padding:16px}
+.rc-viewer.show{display:flex}
+.rc-viewer img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
+.rc-close{position:absolute;top:calc(env(safe-area-inset-top) + 12px);right:12px;width:40px;height:40px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:1.1rem;cursor:pointer}
+.key.fn{padding:10px 16px;font-size:1.15rem;background:var(--surface-container);color:var(--on-surface-variant)}
 .key.eq{grid-column:1/-1;background:var(--primary);color:var(--on-primary)}
 .key.eq:active{filter:brightness(.94);background:var(--primary)}
 .kb-hint{display:none;text-align:center;margin:-6px 0 12px}
@@ -614,8 +627,13 @@ const firebaseConfig = {
    APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
    together on every release. PATCH_NOTES is newest-first.
    ===================================================================== */
-const APP_VERSION = 17;
+const APP_VERSION = 18;
 const PATCH_NOTES = [
+  { v:18, date:'2026-10-25', title:'Brackets & receipt photos', notes:[
+    'The calculator has brackets now — try (12.50 + 8) × 2. A new top row adds ( ) and C (clear).',
+    'New % key works like a phone calculator: 45 + 15% adds a 15% tip, 200 × 10% = 20.',
+    'Attach up to 3 receipt photos to any transaction — snap one with the camera or pick from your gallery. Tap a photo to see it full-screen.',
+    'Transactions with a receipt show a 🧾 tag in Activity. Receipts on Shared entries are visible to both of you.' ] },
   { v:17, date:'2026-10-10', title:'Settle-up & loan polish', notes:[
     'Loans and settle-ups in the Activity log now read correctly for both of you (“Alex lent you” on your phone, “You lent …” on theirs).',
     'Switching between Settle up and Lend money starts with a fresh amount, and same-day history lists the newest first.',
@@ -1305,7 +1323,7 @@ function reflectedFromShared(ym){
     return { id:'shr_'+t.id, srcId:t.id, date:t.date, amount:my, type:'expense',
              categoryId: pcat?pcat.id:null, _group:(pcat&&pcat.group)||(scat&&scat.group)||'want',
              _shared:true, icon:(scat&&scat.icon)||'🤝', name:(scat&&scat.name)||'Shared',
-             vendor:t.vendor||'', note:'your share of a Shared expense' };
+             vendor:t.vendor||'', note:'your share of a Shared expense', receipts:t.receipts };
   }).filter(Boolean);
 }
 /* personal month tx WITH reflected shared shares folded in */
@@ -1853,7 +1871,8 @@ function viewTx(){
     const c = t._shared ? {icon:t.icon,name:t.name} : (catById(sp,t.categoryId)||{icon:'❓',name:'Uncategorized'});
     const isInc=t.type==='income';
     const isRec = !t._shared && !!t.recurringId;
-    const tag = t._shared ? `<span class="tag">🤝 Shared</span>` : (isRec?`<span class="tag">🔁</span>`:'');
+    const tag = (t._shared ? `<span class="tag">🤝 Shared</span>` : (isRec?`<span class="tag">🔁</span>`:''))
+      + (asArray(t.receipts).length ? `<span class="tag" title="Has receipt">🧾</span>` : '');
     const payer = activeSpace==='shared' ? paidByName(sp,t) : '';
     // Primary line = vendor (falls back to category); secondary = category (+ who paid, for shared)
     const primary = t._shared ? (t.vendor || 'Your share of a Shared expense') : (t.vendor || c.name);
@@ -2488,7 +2507,7 @@ function openAdd(){
   let space=activeSpace;
   if(space==='shared' && !data.shared) space='personal';
   addDraft={id:null, space, amount:'', type:'expense', categoryId:null, date:defaultAddDate(), vendor:'', note:'',
-            paidBy:user.uid, splitType:'equal', customMine:'', customPct:'', repeat:'none'};
+            paidBy:user.uid, splitType:'equal', customMine:'', customPct:'', repeat:'none', receipts:[], rcptRemoved:[]};
   renderAddSheet();
 }
 function openEdit(id){
@@ -2496,8 +2515,10 @@ function openEdit(id){
   addDraft={id:t.id, space:activeSpace, amount:trimNum(t.amount), type:t.type, categoryId:t.categoryId, date:t.date, vendor:t.vendor||'', note:t.note||'',
             paidBy:t.paidBy||user.uid, splitType:(t.split&&t.split.type)||'equal',
             customMine:t.split&&t.split.shares?String(t.split.shares[user.uid]??''):'',
-            customPct:(t.split&&t.split.pct!=null)?String(t.split.pct):'', repeat:'none'};
+            customPct:(t.split&&t.split.pct!=null)?String(t.split.pct):'', repeat:'none',
+            receipts:asArray(t.receipts).map(id=>({id, url:null})), rcptRemoved:[]};
   renderAddSheet(true);
+  hydrateDraftReceipts();
 }
 function openEditRecurring(id){
   const sp=curSpace(); const r=asArray(sp.recurring).find(x=>x.id===id); if(!r) return;
@@ -2559,8 +2580,8 @@ function renderAddSheet(){
       <div class="calc-preview" id="amtPreview"></div>
     </div>
     <div class="keypad calc">
-      ${['7','8','9','÷','4','5','6','×','1','2','3','−','.','0','⌫','+']
-        .map(k=>{ const op='÷×−+'.includes(k); return `<div class="key${op?' op':''}" onclick="keyPress('${k}')">${k}</div>`; }).join('')}
+      ${['(',')','C','⌫','7','8','9','÷','4','5','6','×','1','2','3','−','.','0','%','+']
+        .map(k=>{ const cls='÷×−+%'.includes(k)?' op':'()C⌫'.includes(k)?' fn':''; return `<div class="key${cls}" onclick="keyPress('${k}')">${k}</div>`; }).join('')}
       <div class="key eq" onclick="keyPress('=')">=</div>
     </div>
     <div class="field"><label>Category</label><div class="chips">
@@ -2597,6 +2618,9 @@ function renderAddSheet(){
     html+=`<div class="field"><label>🔁 Repeat</label><div class="chips">
       ${[['none','One-time'],['weekly','Weekly'],['biweekly','Every 2 weeks'],['monthly','Monthly'],['yearly','Yearly']].map(([k,lbl])=>`<button class="chip ${d.repeat===k?'active':''}" onclick="setRepeat('${k}')">${lbl}</button>`).join('')}
     </div>${d.repeat!=='none'?`<div class="sub mt8">Auto-adds this ${FREQ_LABEL[d.repeat].toLowerCase()} from the start date. Manage under Plan → Recurring.</div>`:''}</div>`;
+  }
+  if(!isRec && (isEdit || d.repeat==='none')){   // receipts belong to a single entry, not a recurring rule
+    html+=`<div class="field"><label>🧾 Receipts</label><div id="rcStrip">${receiptStripHTML()}</div></div>`;
   }
   html+=`<div class="field"><label>Note</label><input class="input" value="${d.note}" oninput="addDraft.note=this.value" placeholder="Optional"></div>
     <button class="btn filled block" onclick="saveTx()">${isRec?'Save recurring changes':(isEdit?'Save changes':(d.repeat!=='none'?'Add recurring '+d.type:'Add '+d.type))}</button>`;
@@ -3175,46 +3199,74 @@ function splitHintText(d){
   return `You ${fmt(mine)} · Partner ${fmt(Math.max(0,theirs))}`;
 }
 function updateSplitHint(){ const el=document.getElementById('splitHint'); if(el) el.textContent=splitHintText(addDraft); }
-/* Safe arithmetic evaluator for the amount field. Understands + - × ÷ only
-   (no eval, no parentheses). Multiply/divide bind tighter than add/subtract.
-   Returns NaN on anything invalid; tolerates a trailing operator (uses the
-   valid part, so a half-typed "12+" reads as 12). */
+/* Safe arithmetic evaluator for the amount field (no eval). Understands
+   + - × ÷, brackets and %. Usual precedence: brackets, then × ÷, then + −.
+   A number right after a bracket multiplies — 2(3+4) = 14.
+   % works like a phone calculator: 200×10% = 20, and on + / − it is relative
+   to what comes before it, so 45+15% = 51.75 (handy for tips & tax).
+   Returns NaN on anything invalid. Tolerates a half-typed entry: a trailing
+   operator or "(" is ignored and open brackets auto-close, so "12×(3+" reads as 36. */
 function evalExpr(str){
   if(str==null) return NaN;
   const s=String(str).replace(/[×✕xX]/g,'*').replace(/÷/g,'/').replace(/[−–]/g,'-').replace(/,/g,'.').replace(/\s+/g,'');
   if(!s) return NaN;
-  if(!/^[0-9.+\-*/]+$/.test(s)) return NaN;
+  if(!/^[0-9.+\-*/()%]+$/.test(s)) return NaN;
   const toks=[]; let num='';
   for(const ch of s){
-    if('+-*/'.includes(ch)){
-      if(num===''){ if(toks.length===0) return NaN; return NaN; } // leading/double operator
-      toks.push(parseFloat(num)); num=''; toks.push(ch);
-    } else num+=ch;
+    if(/[0-9.]/.test(ch)){ num+=ch; continue; }
+    if(num!==''){ if((num.match(/\./g)||[]).length>1) return NaN; toks.push(parseFloat(num)); num=''; }
+    toks.push(ch);
   }
-  if(num!=='') toks.push(parseFloat(num)); else toks.pop();      // drop a trailing operator
-  if(!toks.length || typeof toks[0]!=='number' || isNaN(toks[0])) return NaN;
-  if(toks.some(t=>typeof t==='number' && isNaN(t))) return NaN;
-  const p=[toks[0]];                                             // pass 1: * and /
-  for(let i=1;i<toks.length;i+=2){
-    const op=toks[i], b=toks[i+1];
-    if(typeof b!=='number') break;
-    if(op==='*') p[p.length-1]*=b;
-    else if(op==='/') p[p.length-1] = b===0?NaN : p[p.length-1]/b;
-    else p.push(op,b);
+  if(num!==''){ if((num.match(/\./g)||[]).length>1) return NaN; toks.push(parseFloat(num)); }
+  while(toks.length && '+-*/('.includes(toks[toks.length-1])) toks.pop();   // half-typed tail
+  if(!toks.length || toks.some(t=>typeof t==='number' && isNaN(t))) return NaN;
+  let i=0;
+  const peek=()=>toks[i];
+  function factor(){                       // -x | (expr) | number, then any %
+    const t=peek(); let v;
+    if(t==='-'){ i++; const f=factor(); return {v:-f.v, pct:f.pct}; }
+    if(t==='+'){ i++; return factor(); }
+    if(t==='('){ i++; v=expr(); if(peek()===')') i++; }
+    else if(typeof t==='number'){ i++; v=t; }
+    else throw 0;
+    let pct=false;
+    while(peek()==='%'){ i++; v/=100; pct=true; }
+    return {v, pct};
   }
-  let res=p[0];                                                  // pass 2: + and -
-  for(let i=1;i<p.length;i+=2){ const op=p[i],b=p[i+1]; if(op==='+')res+=b; else if(op==='-')res-=b; }
-  return res;
+  function term(){                         // factor (× ÷ factor | implicit ×)*
+    let f=factor(), v=f.v, pct=f.pct;
+    for(;;){
+      const t=peek();
+      if(t==='*'||t==='/'){ i++; const b=factor().v; v = t==='*' ? v*b : (b===0?NaN:v/b); pct=false; }
+      else if(t==='('||typeof t==='number'){ v*=factor().v; pct=false; }     // 2(3+4)
+      else break;
+    }
+    return {v, pct};
+  }
+  function expr(){                         // term (+ − term)*
+    let v=term().v;
+    while(peek()==='+'||peek()==='-'){
+      const op=toks[i++], r=term();
+      const b = r.pct ? v*r.v : r.v;       // 45+15% → 45 + 45×0.15
+      v = op==='+' ? v+b : v-b;
+    }
+    return v;
+  }
+  try{ const v=expr(); return i===toks.length ? v : NaN; }   // leftover = stray ")" etc.
+  catch(e){ return NaN; }
 }
 // Amount-buffer display: whole numbers show plain (6), fractionals always show 2 dp (6.60, not 6.6)
 function trimNum(n){ n=Math.round((+n||0)*100)/100; return Number.isInteger(n) ? String(n) : n.toFixed(2); }
+const isExprStr=a=>/[+\-*/()%]/.test(a);
+// pretty operators for display only — the buffer keeps * / -
+function prettyExpr(a){ return a.replace(/\*/g,'×').replace(/\//g,'÷').replace(/-/g,'−'); }
 function renderAmt(){
   const a=addDraft.amount||'';
   const el=document.getElementById('amtNum');
-  if(el){ el.textContent=a||'0'; el.classList.toggle('expr', /[+\-*/]/.test(a) || a.length>9); }
+  if(el){ el.textContent=a?prettyExpr(a):'0'; el.classList.toggle('expr', isExprStr(a) || a.length>9); }
   const pv=document.getElementById('amtPreview');
   if(pv){
-    if(/[+\-*/]/.test(a)){ const r=evalExpr(a); pv.textContent = isFinite(r)? '= '+CUR_SYMBOL+trimNum(r) : ''; }
+    if(isExprStr(a)){ const r=evalExpr(a); pv.textContent = isFinite(r)? '= '+(r<0?'−':'')+CUR_SYMBOL+trimNum(Math.abs(r)) : ''; }
     else pv.textContent='';
   }
   updateSplitHint();
@@ -3222,24 +3274,34 @@ function renderAmt(){
 function keyPress(k){
   let a=addDraft.amount||'';
   const isOp=c=>'+-*/'.includes(c);
+  const last=a[a.length-1]||'';
+  const endsValue = /[0-9.)%]/.test(last);           // something you can put an operator after
+  const openN=(a.match(/\(/g)||[]).length-(a.match(/\)/g)||[]).length;
+  const seg=a.split(/[+\-*/()%]/).pop();              // the number being typed
   if(k==='⌫'){ a=a.slice(0,-1); }
   else if(k==='C'){ a=''; }
   else if(k==='='){ const r=evalExpr(a); if(isFinite(r)) a=trimNum(r); }
+  else if(k==='('){ a = endsValue ? a+'*(' : a+'('; }     // 2( → 2×(
+  else if(k===')'){ if(openN>0 && /[0-9)%]/.test(last)) a+=')'; else return; }
+  else if(k==='%'){ if(/[0-9)]/.test(last)) a+='%'; else return; }
   else if('÷×−+-*/'.includes(k)){
     const op = k==='÷'?'/' : k==='×'?'*' : k==='−'?'-' : k;
-    if(a==='') return;                              // no leading operator
-    a = isOp(a[a.length-1]) ? a.slice(0,-1)+op : a+op;   // replace a trailing operator
+    if(a===''||last==='('){ if(op==='-') a+='-'; return void (addDraft.amount=a, renderAmt()); } // only a minus can start a group
+    a = isOp(last) ? (a.length>1 && a[a.length-2]==='(' ? a : a.slice(0,-1)+op) : a+op;   // replace a trailing operator
   }
   else if(k==='.'){
-    const seg=a.split(/[+\-*/]/).pop();
+    if(last===')'||last==='%') return;
     if(seg.includes('.')) return;                  // one decimal per number
-    a = (a===''||isOp(a[a.length-1])) ? a+'0.' : a+'.';
+    a = (a===''||isOp(last)||last==='(') ? a+'0.' : a+'.';
   }
   else {                                           // a digit
     if(a==='0') a='';
-    const seg=a.split(/[+\-*/]/).pop();
-    if(seg.includes('.') && seg.split('.')[1].length>=2) return; // max 2 decimals per number
-    a=a+k;
+    if(last===')'||last==='%'){ a+='*'+k; }        // (2+3)4 → (2+3)×4
+    else {
+      if(seg.includes('.') && seg.split('.')[1].length>=2) return; // max 2 decimals per number
+      if(seg==='0' && a.length>1) a=a.slice(0,-1);  // no leading zeros like 5+07
+      a=a+k;
+    }
   }
   addDraft.amount=a; renderAmt();
 }
@@ -3290,6 +3352,9 @@ function saveTx(){
 
   const t={id:d.id||uid(), date:d.date, amount:amtR, categoryId:d.categoryId, vendor:d.vendor.trim(), note:d.note.trim(), type:d.type};
   if(!d.id) t.at=Date.now();          // creation timestamp → orders same-day entries newest-first in the Activity tab
+  const rc=d.receipts||[];
+  if(rc.length) t.receipts=rc.map(r=>r.id);
+  writeReceipts(d.space, t.id, rc.filter(r=>r.isNew && r.url), d.rcptRemoved||[]);   // photos live outside the space blob
   if(isSharedExp){
     t.paidBy=d.paidBy;
     t.split=computeSplit(sp,amtR,d.paidBy,d.splitType,d.customMine,d.customPct);
@@ -3306,11 +3371,138 @@ function saveTx(){
 function deleteTx(id){
   const sp=draftSpace(); const old=asArray(sp.transactions).find(t=>t.id===id);
   sp.transactions=asArray(sp.transactions).filter(t=>t.id!==id);
+  if(old && asArray(old.receipts).length) deleteAllReceipts(addDraft.space, id);
   if(old) logActivity(addDraft.space, old.type==='income'?'💰':'🗑️',
     'Deleted '+(old.type==='income'?'income':'expense'),
     `${catName(sp,old.categoryId)}${old.vendor?' · '+old.vendor:''} · ${fmt(old.amount)}`);
   saveSpace(addDraft.space); closeSheet(); render(); toast('Deleted');
 }
+
+/* =====================================================================
+   RECEIPTS — up to 3 photos per transaction
+   ===================================================================== */
+// Photos are compressed JPEG data-URLs kept OUT of the space blob (every save
+// rewrites the whole space, so big images there would slow saves and bloat
+// backups). They live at receipts/personal/{uid}/{txId}/{pid} or
+// receipts/shared/{sharedId}/{txId}/{pid}; the transaction itself only keeps
+// the ids (t.receipts = [pid,…]) so lists can show 🧾 without downloading.
+const RECEIPT_MAX = 3;
+const _rcptCache = {};                 // path -> {pid:url} once downloaded
+let _rcptRulesHinted = false;
+function receiptPath(space, txId){
+  return 'receipts/'+(space==='shared' ? 'shared/'+(data.shared&&data.shared.id) : 'personal/'+user.uid)+'/'+txId;
+}
+function rcptLsKey(path){ return 'nest_rcpt_'+path; }
+function rcptErr(err){
+  if(err && err.code==='PERMISSION_DENIED'){
+    if(!_rcptRulesHinted){ _rcptRulesHinted=true; toast('🧾 Receipts need the “receipts” rule in Firebase'); }
+  } else toast('⚠️ Couldn’t sync the receipt photo');
+  console.warn('Nest receipt', err);
+}
+function loadReceipts(space, txId){
+  const path=receiptPath(space, txId);
+  if(_rcptCache[path]) return Promise.resolve(_rcptCache[path]);
+  if(TEST_MODE){
+    let v={}; try{ v=JSON.parse(lsGet(rcptLsKey(path))||'{}')||{}; }catch(e){}
+    return Promise.resolve(_rcptCache[path]=v);
+  }
+  return db.ref(path).get().then(s=>(_rcptCache[path]=s.val()||{})).catch(err=>{ rcptErr(err); return {}; });
+}
+// adds: [{id,url}] · removes: [id]
+function writeReceipts(space, txId, adds, removes){
+  if(!adds.length && !removes.length) return;
+  const path=receiptPath(space, txId);
+  const upd={}; adds.forEach(r=>upd[r.id]=r.url); removes.forEach(id=>upd[id]=null);
+  const merged=Object.assign({}, _rcptCache[path]||{}, upd);
+  Object.keys(merged).forEach(k=>{ if(merged[k]==null) delete merged[k]; });
+  _rcptCache[path]=merged;
+  if(TEST_MODE){
+    try{ if(Object.keys(merged).length) lsSet(rcptLsKey(path), JSON.stringify(merged)); else lsDel(rcptLsKey(path)); }
+    catch(e){ toast('⚠️ Not enough device storage for that photo'); }
+    return;
+  }
+  db.ref(path).update(upd).catch(rcptErr);
+}
+function deleteAllReceipts(space, txId){
+  const path=receiptPath(space, txId);
+  delete _rcptCache[path];
+  if(TEST_MODE){ lsDel(rcptLsKey(path)); return; }
+  db.ref(path).remove().catch(rcptErr);
+}
+// Shrink a photo to ≤1280px on the long side as JPEG (~100–250 KB) — plenty to read a receipt.
+function compressImage(file){
+  return new Promise((resolve, reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      const enc=(max,q)=>{
+        const sc=Math.min(1, max/Math.max(img.naturalWidth, img.naturalHeight));
+        const c=document.createElement('canvas');
+        c.width=Math.round(img.naturalWidth*sc); c.height=Math.round(img.naturalHeight*sc);
+        const g=c.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0,c.width,c.height);
+        return c.toDataURL('image/jpeg', q);
+      };
+      let out=enc(1280,.6);
+      if(out.length>400000) out=enc(1024,.5);     // very detailed shots: one more squeeze
+      resolve(out);
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); reject(new Error('not an image')); };
+    img.src=url;
+  });
+}
+function receiptStripHTML(){
+  const d=addDraft, list=d.receipts||[];
+  const thumbs=list.map((r,i)=>`<div class="rc-thumb" onclick="openReceiptViewer(${i})">
+      ${r.url ? `<img src="${r.url}" alt="Receipt ${i+1}">` : `<span class="rc-ph">${r.missing?'⚠️':'⏳'}</span>`}
+      <button class="rc-x" onclick="event.stopPropagation();removeDraftReceipt(${i})" aria-label="Remove receipt">✕</button>
+    </div>`).join('');
+  const room=list.length<RECEIPT_MAX;
+  return `<div class="rc-row">${thumbs}
+    ${room?`<button class="rc-add" onclick="document.getElementById('rcCam').click()"><span>📷</span>Camera</button>
+      <button class="rc-add" onclick="document.getElementById('rcGal').click()"><span>🖼️</span>Gallery</button>`:''}
+    </div>
+    <input type="file" id="rcCam" accept="image/*" capture="environment" hidden onchange="addReceiptFiles(this)">
+    <input type="file" id="rcGal" accept="image/*" multiple hidden onchange="addReceiptFiles(this)">
+    <div class="sub mt8">${list.length?`${list.length} of ${RECEIPT_MAX} · tap to view`:`Optional — snap or pick up to ${RECEIPT_MAX} photos`}</div>`;
+}
+function renderReceiptStrip(){ const el=document.getElementById('rcStrip'); if(el) el.innerHTML=receiptStripHTML(); }
+async function addReceiptFiles(input){
+  const d=addDraft; if(!d) return;
+  const files=[...(input.files||[])]; input.value='';
+  d.receipts=d.receipts||[];
+  const room=RECEIPT_MAX-d.receipts.length;
+  if(files.length>room) toast(`Only ${RECEIPT_MAX} receipts per transaction`);
+  for(const f of files.slice(0, Math.max(0,room))){
+    try{ const url=await compressImage(f); if(addDraft!==d) return; d.receipts.push({id:uid(), url, isNew:true}); }
+    catch(e){ toast('Couldn’t read that image'); }
+    renderReceiptStrip();
+  }
+}
+function removeDraftReceipt(i){
+  const d=addDraft, r=(d.receipts||[])[i]; if(!r) return;
+  if(!r.isNew) (d.rcptRemoved=d.rcptRemoved||[]).push(r.id);
+  d.receipts.splice(i,1);
+  renderReceiptStrip();
+}
+// Edit: pull existing photos in the background and drop them into the strip as they land.
+function hydrateDraftReceipts(){
+  const d=addDraft; if(!d||!d.id||!(d.receipts||[]).length) return;
+  loadReceipts(d.space, d.id).then(map=>{
+    if(addDraft!==d) return;
+    d.receipts.forEach(r=>{ if(!r.url){ if(map[r.id]) r.url=map[r.id]; else r.missing=true; } });
+    renderReceiptStrip();
+  });
+}
+function openReceiptViewer(i){
+  const r=(addDraft&&addDraft.receipts||[])[i];
+  if(!r||!r.url){ toast(r&&r.missing?'This photo isn’t available any more':'Still loading…'); return; }
+  let v=document.getElementById('rcViewer');
+  if(!v){ v=document.createElement('div'); v.id='rcViewer'; v.className='rc-viewer'; v.onclick=closeReceiptViewer; document.body.appendChild(v); }
+  v.innerHTML=`<img src="${r.url}" alt="Receipt"><button class="rc-close" aria-label="Close">✕</button>`;
+  v.classList.add('show');
+}
+function closeReceiptViewer(){ const v=document.getElementById('rcViewer'); if(v&&v.classList.contains('show')){ v.classList.remove('show'); v.innerHTML=''; return true; } return false; }
 
 /* =====================================================================
    TRANSFERS — settle-ups & loans
@@ -3668,7 +3860,7 @@ function doSignOut(){ if(auth) auth.signOut(); closeSheet(); }
 function openSheetHTML(html){ const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.scrollTop=0; s.innerHTML=html; s.classList.add('show'); document.getElementById('scrim').classList.add('show'); }
 // Re-render the open sheet WITHOUT jumping back to the top (for in-place toggles).
 function openSheetHTMLKeep(html){ const s=document.getElementById('sheet'); const keep=(s&&s.classList.contains('show'))?s.scrollTop:0; openSheetHTML(html); const s2=document.getElementById('sheet'); if(s2&&keep) s2.scrollTop=keep; }
-function closeSheet(){ const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.classList.remove('show'); const sc=document.getElementById('scrim'); sc.style.opacity=''; sc.classList.remove('show'); }
+function closeSheet(){ closeReceiptViewer(); const s=document.getElementById('sheet'); s.style.transition=''; s.style.transform=''; s.classList.remove('show'); const sc=document.getElementById('scrim'); sc.style.opacity=''; sc.classList.remove('show'); }
 
 /* Phone back-gesture handling: a swipe-back first closes any open sheet
    (the add/edit "text boxes", settings, backups, etc.); if nothing is open
@@ -3690,6 +3882,7 @@ function initBackButton(){
     if(!appEl || appEl.classList.contains('hidden')){ _guardsUp=false; return; } // before sign-in: back behaves normally
     try{ history.pushState({nest:2},''); }catch(e){}   // restore the entry this back just consumed
     _guardsUp=true;
+    if(closeReceiptViewer()) return;                                         // 0) close a full-screen receipt
     const sheet=document.getElementById('sheet');
     if(sheet && sheet.classList.contains('show')){ closeSheet(); return; }   // 1) close an open sheet
     if(activeTab!=='home'){ setTab('home'); return; }                        // 2) jump to Home
@@ -3754,12 +3947,14 @@ function initAmountKeyboard(){
     if(!document.getElementById('amtNum')) return;         // only the Add/Edit sheet has the amount pad
     if(e.ctrlKey||e.metaKey||e.altKey) return;             // don't clobber shortcuts
     const k=e.key;
-    if(k==='Escape'){ e.preventDefault(); closeSheet(); return; }
+    if(k==='Escape'){ e.preventDefault(); if(!closeReceiptViewer()) closeSheet(); return; }
     const ae=document.activeElement;
     if(ae && (ae.tagName==='INPUT'||ae.tagName==='TEXTAREA'||ae.tagName==='SELECT')) return; // let real fields type
     if(k>='0' && k<='9'){ e.preventDefault(); keyPress(k); }
     else if(k==='.'||k===','){ e.preventDefault(); keyPress('.'); }
     else if(k==='+'||k==='-'||k==='*'||k==='/'){ e.preventDefault(); keyPress(k); }   // math operators
+    else if(k==='('||k===')'||k==='%'){ e.preventDefault(); keyPress(k); }             // brackets & percent
+    else if(k==='c'||k==='C'){ e.preventDefault(); keyPress('C'); }                    // clear
     else if(k==='x'||k==='X'){ e.preventDefault(); keyPress('*'); }                    // x = multiply
     else if(k==='='){ e.preventDefault(); keyPress('='); }                             // evaluate in place
     else if(k==='Backspace'||k==='Delete'){ e.preventDefault(); keyPress('⌫'); }
