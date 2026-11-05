@@ -299,6 +299,20 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .log-row .lmeta{font-size:.74rem;color:var(--on-surface-variant);margin-top:2px}
 .log-row .lwho{font-weight:700;color:var(--primary)}
 
+/* first-run tutorial */
+.tut{touch-action:pan-y}
+.tut-art{width:76px;height:76px;border-radius:26px;margin:0 auto 12px;display:grid;place-items:center;font-size:2.4rem;background:var(--primary-container);color:var(--on-primary-container)}
+.tut h2{text-align:center;margin:0 0 6px}
+.tut .tut-lead{text-align:center;color:var(--on-surface-variant);margin:0 auto 14px;max-width:420px}
+.tut-pts{list-style:none;margin:0 0 6px;padding:0;display:flex;flex-direction:column;gap:8px}
+.tut-pts li{display:flex;gap:12px;align-items:flex-start;background:var(--surface-container);border-radius:18px;padding:11px 14px;font-size:.93rem;line-height:1.35}
+.tut-pts .ti{font-size:1.25rem;line-height:1.1;flex:0 0 auto}
+.tut-foot{position:sticky;bottom:calc(-24px - env(safe-area-inset-bottom));margin:0 -20px;padding:4px 20px calc(24px + env(safe-area-inset-bottom));margin-bottom:calc(-24px - env(safe-area-inset-bottom));background:var(--surface-container-low)}
+.tut-dots{display:flex;justify-content:center;gap:6px;margin:8px 0 10px}
+.tut-dots span{width:8px;height:8px;border-radius:4px;background:var(--outline-variant);transition:width .2s,background .2s}
+.tut-dots span.on{width:22px;background:var(--primary)}
+.tut-nav{display:flex;gap:10px;align-items:center}
+.tut-nav .btn.filled{flex:1}
 /* chips */
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{padding:9px 14px;border-radius:var(--r-full);background:var(--surface-container-high);font-size:.9rem;font-weight:500;border:1.5px solid transparent}
@@ -627,8 +641,11 @@ const firebaseConfig = {
    APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
    together on every release. PATCH_NOTES is newest-first.
    ===================================================================== */
-const APP_VERSION = 18;
+const APP_VERSION = 19;
 const PATCH_NOTES = [
+  { v:19, date:'2026-11-05', title:'Welcome tour', notes:[
+    'New to Nest? A quick 6-step tour now walks you through adding spending, planning your month, Insights, the Shared budget and backups.',
+    'Replay it any time from ⚙️ Settings → Help → Replay the tour.' ] },
   { v:18, date:'2026-10-25', title:'Brackets & receipt photos', notes:[
     'The calculator has brackets now — try (12.50 + 8) × 2. A new top row adds ( ) and C (clear).',
     'New % key works like a phone calculator: 45 + 15% adds a 15% tip, 200 × 10% = 20.',
@@ -735,6 +752,92 @@ function maybeShowWhatsNew(){
   // Write the seen marker the moment we show it, so it appears exactly once.
   try{ localStorage.setItem(LAST_SEEN_KEY, String(APP_VERSION)); }catch(e){}
   openSheetHTML(whatsNewSheetHTML(entries));
+}
+
+/* ---------- first-run tutorial ----------
+   Shown once per device to people who are new to Nest (an empty Personal budget),
+   then replayable any time from Settings. UI + localStorage only — never writes data. */
+const TUTORIAL_KEY = 'nest_tutorialDone';
+const TUTORIAL_STEPS = [
+  { art:'🪺', title:'Welcome to Nest', lead:'A simple budget for you — and for the two of you together. Here’s a 1-minute tour.', pts:[
+    ['🧍','<b>Personal</b> is your own budget. Only you can see it.'],
+    ['🤝','<b>Shared</b> is a joint budget with your partner — rent, groceries, dates.'],
+    ['👆','Switch between them with the toggle at the top of the screen.'] ] },
+  { art:'＋', title:'Add spending in seconds', lead:'Tap the big ＋ button at the bottom whenever you spend or get paid.', pts:[
+    ['🔢','Type the amount on the keypad — it’s a calculator too, so <b>(12.50 + 8) × 2</b> or <b>45 + 15%</b> just work.'],
+    ['🏷️','Pick a category, and add where you spent it. Nest learns your usual stores.'],
+    ['🧾','Snap up to 3 receipt photos with the camera, or pick them from your gallery.'],
+    ['🔁','Rent or a bill every month? Set <b>Repeat</b> and Nest adds it for you on schedule.'] ] },
+  { art:'🎯', title:'Plan your month', lead:'The Plan tab is where you set up your budget.', pts:[
+    ['💵','Enter your take-home <b>paycheque</b> (every 2 weeks). Nest works out your monthly income.'],
+    ['💡','It then suggests budgets for each category using the <b>50 / 30 / 20</b> guideline — needs, wants, savings.'],
+    ['🎯','Set a <b>monthly savings goal</b> and watch the ring fill up on Home.'] ] },
+  { art:'📊', title:'See where it goes', lead:'Home, Activity and Insights show how your month is going.', pts:[
+    ['🏠','<b>Home</b> shows what’s left to spend this month and how you’re doing on savings.'],
+    ['📋','<b>Activity</b> lists every transaction — tap one to edit it or see its receipts.'],
+    ['📊','<b>Insights</b> breaks down spending by category and month so you can spot trends.'] ] },
+  { art:'🤝', title:'Budget together', lead:'Tap Shared at the top to set up a joint budget.', pts:[
+    ['✨','One of you taps <b>Create a shared space</b>, then shares the <b>invite code</b> from ⚙️ Settings.'],
+    ['🔑','The other taps <b>Join with an invite code</b>. Each of you signs in with your own Google account.'],
+    ['➗','Split shared costs 50/50 or any %, and Nest keeps a running “who owes who”.'],
+    ['💸','<b>Settle up</b> when one of you pays the other back, or record when one of you <b>lends</b> money.'] ] },
+  { art:'☁️', title:'Always saved, on every device', lead:'Sign in with the same Google account on your phone and computer and everything stays in sync.', pts:[
+    ['🟢','The dot at the top right shows your save status. Tap it for daily <b>backups &amp; restore</b>.'],
+    ['📲','On your phone, open the browser menu → <b>Add to Home screen</b> (or Install app) to use Nest like a real app.'],
+    ['🎓','You can replay this tour any time from ⚙️ Settings.'] ] },
+];
+let tutStep = 0;
+function tutorialHTML(i){
+  const st = TUTORIAL_STEPS[i], last = i===TUTORIAL_STEPS.length-1;
+  const pts = st.pts.map(p=>`<li><span class="ti">${p[0]}</span><span>${p[1]}</span></li>`).join('');
+  const dots = TUTORIAL_STEPS.map((_,k)=>`<span class="${k===i?'on':''}"></span>`).join('');
+  return `<div class="tut" id="tutSheet">
+    <div class="grabber"></div>
+    <div class="tut-art">${st.art}</div>
+    <h2>${st.title}</h2>
+    <p class="tut-lead">${st.lead}</p>
+    <ul class="tut-pts">${pts}</ul>
+    <div class="tut-foot">
+    <div class="tut-dots" aria-label="Step ${i+1} of ${TUTORIAL_STEPS.length}">${dots}</div>
+    <div class="tut-nav">
+      ${i>0?`<button class="btn text" onclick="tutGo(${i-1})">Back</button>`:`<button class="btn text" onclick="closeSheet()">Skip</button>`}
+      ${last?`<button class="btn filled" onclick="finishTutorial()">Set up my budget</button>`
+            :`<button class="btn filled" onclick="tutGo(${i+1})">Next</button>`}
+    </div>
+    </div>
+  </div>`;
+}
+function markTutorialDone(){ try{ localStorage.setItem(TUTORIAL_KEY,'1'); }catch(e){} }
+function openTutorial(){ tutStep=0; markTutorialDone(); openSheetHTML(tutorialHTML(0)); bindTutSwipe(); }
+function tutGo(i){
+  if(i<0||i>=TUTORIAL_STEPS.length) return;
+  const s=document.getElementById('sheet'); if(!s||!document.getElementById('tutSheet')) return;
+  tutStep=i; s.innerHTML=tutorialHTML(i); s.scrollTop=0; bindTutSwipe();
+}
+function finishTutorial(){ closeSheet(); activeSpace='personal'; setTab('plan'); }
+// Horizontal swipe between steps (vertical drags are left to the sheet's drag-to-dismiss).
+function bindTutSwipe(){
+  const el=document.getElementById('tutSheet'); if(!el) return;
+  let x0=null,y0=null;
+  el.addEventListener('touchstart',e=>{ const t=e.touches[0]; x0=t.clientX; y0=t.clientY; },{passive:true});
+  el.addEventListener('touchend',e=>{
+    if(x0==null) return; const t=e.changedTouches[0]; const dx=t.clientX-x0, dy=t.clientY-y0; x0=null;
+    if(Math.abs(dx)>60 && Math.abs(dx)>Math.abs(dy)*1.5) tutGo(tutStep+(dx<0?1:-1));
+  },{passive:true});
+}
+// Auto-show once per device for someone new: their Personal budget has no entries yet.
+let tutorialChecked=false;
+function maybeShowTutorial(){
+  if(tutorialChecked) return;
+  const sp=data.personal; if(!sp) return;          // wait for the first load
+  tutorialChecked=true;
+  let done=false; try{ done=!!localStorage.getItem(TUTORIAL_KEY); }catch(e){ return; }
+  if(done) return;
+  if(asArray(sp.transactions).length || asArray(sp.recurring).length) return;   // already using Nest
+  setTimeout(()=>{
+    const s=document.getElementById('sheet'); if(s && s.classList.contains('show')) return;  // don't stomp an open sheet
+    openTutorial();
+  }, 400);
 }
 
 /* ---------- safe storage (localStorage throws inside data: URLs / private mode) ---------- */
@@ -845,6 +948,7 @@ function bootTestMode(){
   user = TEST_PEOPLE[TEST_USER];
   loadTestData();
   showApp();
+  maybeShowTutorial();
 }
 function loadTestData(){
   // personal is per-user; shared is global
@@ -950,6 +1054,7 @@ function attachPersonal(){
     runRecurring(data.personal);
     if(!TEST_MODE) render();
     maybeBackup('personal');
+    maybeShowTutorial();
   }, err=>{
     if(err && err.code==='PERMISSION_DENIED') toast('Database rules not set yet — publish the security rules in Firebase.');
   });
@@ -3669,6 +3774,10 @@ function sheetSettings(){
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>Appearance</h3>
     <button class="btn outline block" onclick="toggleTheme();openSheet('settings')">Toggle light / dark</button>
+  </div>`;
+  h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
+    <h3>Help</h3>
+    <button class="btn outline block" onclick="openTutorial()">🎓 Replay the tour</button>
   </div>`;
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>Data</h3>
