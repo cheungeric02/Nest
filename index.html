@@ -313,6 +313,22 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .tut-dots span.on{width:22px;background:var(--primary)}
 .tut-nav{display:flex;gap:10px;align-items:center}
 .tut-nav .btn.filled{flex:1}
+/* credit card reminders */
+.cc-due{display:flex;align-items:center;gap:12px;background:var(--tertiary-container);color:var(--on-tertiary-container);box-shadow:none;cursor:pointer}
+.cc-due .cc-ic{font-size:1.5rem;line-height:1}
+.cc-due .cc-txt{flex:1;min-width:0}
+.cc-due .cc-txt b{font-weight:800}
+.cc-due .cc-when{font-size:.85rem;opacity:.85}
+.cc-due.soon{background:var(--primary-container);color:var(--on-primary-container)}
+.cc-due.today{background:var(--error-container);color:var(--on-error-container)}
+.cc-prompt{background:var(--surface-container);box-shadow:none}
+.cc-row{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--outline-variant)}
+.cc-row:last-child{border-bottom:0}
+.cc-row .cc-main{flex:1;min-width:0}
+.cc-row .cc-name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cc-row .btn{padding:8px 12px;min-height:40px}
+.cc-form{display:grid;grid-template-columns:1fr 120px;gap:10px;align-items:end}
+@media (max-width:360px){ .cc-form{grid-template-columns:1fr} }
 /* chips */
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{padding:9px 14px;border-radius:var(--r-full);background:var(--surface-container-high);font-size:.9rem;font-weight:500;border:1.5px solid transparent}
@@ -641,8 +657,13 @@ const firebaseConfig = {
    APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
    together on every release. PATCH_NOTES is newest-first.
    ===================================================================== */
-const APP_VERSION = 19;
+const APP_VERSION = 20;
 const PATCH_NOTES = [
+  { v:20, date:'2026-11-19', title:'Credit card reminders', notes:[
+    'Never miss a card payment: add your credit cards in ⚙️ Settings → 💳 Credit cards with a nickname and the day of the month each is due.',
+    'Home shows a reminder from a week before, then “due tomorrow” and “due today”.',
+    'Tap 📅 next to a card to add it to your phone’s calendar as a monthly event with alerts 1 week, 1 day and on the day — so you’re reminded even when Nest is closed.',
+    'Due on the 31st? In shorter months Nest uses the last day of the month.' ] },
   { v:19, date:'2026-11-05', title:'Welcome tour', notes:[
     'New to Nest? A quick 6-step tour now walks you through adding spending, planning your month, Insights, the Shared budget and backups.',
     'Replay it any time from ⚙️ Settings → Help → Replay the tour.' ] },
@@ -781,6 +802,11 @@ const TUTORIAL_STEPS = [
     ['🔑','The other taps <b>Join with an invite code</b>. Each of you signs in with your own Google account.'],
     ['➗','Split shared costs 50/50 or any %, and Nest keeps a running “who owes who”.'],
     ['💸','<b>Settle up</b> when one of you pays the other back, or record when one of you <b>lends</b> money.'] ] },
+  { art:'💳', title:'Never miss a card payment', lead:'Tell Nest when your credit cards are due and it reminds you.', pts:[
+    ['📅','Give each card a nickname and the day of the month it’s due.'],
+    ['🔔','Home shows a reminder <b>a week before</b>, <b>the day before</b> and <b>on the day</b>.'],
+    ['📲','Add each card to your phone’s calendar so you get alerts even when Nest is closed.'],
+    ['','<button class="btn tonal" onclick="openCards(true)">💳 Add my cards</button>'] ] },
   { art:'☁️', title:'Always saved, on every device', lead:'Sign in with the same Google account on your phone and computer and everything stays in sync.', pts:[
     ['🟢','The dot at the top right shows your save status. Tap it for daily <b>backups &amp; restore</b>.'],
     ['📲','On your phone, open the browser menu → <b>Add to Home screen</b> (or Install app) to use Nest like a real app.'],
@@ -838,6 +864,142 @@ function maybeShowTutorial(){
     const s=document.getElementById('sheet'); if(s && s.classList.contains('show')) return;  // don't stomp an open sheet
     openTutorial();
   }, 400);
+}
+
+/* ---------- credit card due-date reminders ----------
+   Cards live in the Personal space (data.personal.cards = [{id,name,dueDay}]).
+   Home shows a banner from 7 days before through the due day; each card can be
+   exported as a monthly .ics calendar event with alerts 1 week / 1 day / day of. */
+const CC_PROMPT_KEY = 'nest_ccPromptDone';
+let ccEditId = null, ccFromTour = false;
+function ordinal(n){ const v=n%100; return n+((v>=11&&v<=13)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')); }
+function ccDueOn(y,m,day){ return new Date(y,m,Math.min(day,daysInMonth(y,m))); }
+// next due date on/after today (today counts), with whole days until it
+function ccNextDue(card){
+  const day=Math.max(1,Math.min(31,parseInt(card.dueDay,10)||1));
+  const t=new Date(); const today=new Date(t.getFullYear(),t.getMonth(),t.getDate());
+  let d=ccDueOn(today.getFullYear(),today.getMonth(),day);
+  if(d<today) d=ccDueOn(today.getFullYear(),today.getMonth()+1,day);
+  const days=Math.round((d-today)/86400000);
+  return {date:d, days};
+}
+function ccWhen(days){ return days===0?'today':days===1?'tomorrow':'in '+days+' days'; }
+function ccDateLbl(d){ return d.toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'}); }
+function ccCards(){ return asArray(data.personal&&data.personal.cards); }
+function ccHomeHTML(){
+  const cards=ccCards();
+  let h='';
+  const due=cards.map(c=>({c,n:ccNextDue(c)})).filter(x=>x.n.days<=7).sort((a,b)=>a.n.days-b.n.days);
+  due.forEach(({c,n})=>{
+    const cls=n.days===0?'today':n.days===1?'soon':'';
+    const ic=n.days===0?'🚨':n.days===1?'⏰':'💳';
+    h+=`<div class="card cc-due ${cls}" onclick="openCards()">
+      <span class="cc-ic">${ic}</span>
+      <div class="cc-txt"><div><b>${esc(c.name)}</b> is due <b>${ccWhen(n.days)}</b></div>
+        <div class="cc-when">${ccDateLbl(n.date)}</div></div>
+    </div>`;
+  });
+  let promptDone=true; try{ promptDone=!!localStorage.getItem(CC_PROMPT_KEY); }catch(e){}
+  if(!cards.length && !promptDone && activeSpace==='personal'){
+    h+=`<div class="card cc-prompt"><h3>💳 Credit card reminders</h3>
+      <div class="sub mb8">Add your cards and when they’re due — Nest will remind you a week before, the day before and on the day.</div>
+      <div class="row" style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn text" onclick="ccDismissPrompt()">Not now</button>
+        <button class="btn filled" onclick="openCards()">Add cards</button></div></div>`;
+  }
+  return h;
+}
+function ccDismissPrompt(){ try{ localStorage.setItem(CC_PROMPT_KEY,'1'); }catch(e){} render(); }
+function openCards(fromTour){ ccFromTour=!!fromTour; ccEditId=null; openSheetHTML(sheetCards()); }
+function sheetCards(){
+  const cards=ccCards();
+  const ed=ccEditId?cards.find(c=>c.id===ccEditId):null;
+  let h=`<div class="grabber"></div><h2>💳 Credit cards</h2>
+    <div class="sub mb8">Nest reminds you on Home a week before, the day before and on the day each card is due. Only you can see these.</div>`;
+  if(cards.length){
+    h+=`<div class="card" style="box-shadow:none;background:var(--surface-container);padding:6px 16px">`;
+    cards.forEach(c=>{
+      const n=ccNextDue(c);
+      h+=`<div class="cc-row"><div class="cc-main"><div class="cc-name">${esc(c.name)}</div>
+        <div class="sub">Due the ${ordinal(+c.dueDay)} · next ${ccDateLbl(n.date)} (${ccWhen(n.days)})</div></div>
+        <button class="btn tonal" title="Add to calendar" aria-label="Add ${esc(c.name)} to calendar" onclick="ccDownloadICS('${c.id}')">📅</button>
+        <button class="btn text" onclick="ccEdit('${c.id}')">Edit</button></div>`;
+    });
+    h+=`</div>`;
+  }
+  const opts=Array.from({length:31},(_,i)=>i+1).map(d=>`<option value="${d}" ${(ed?+ed.dueDay:15)===d?'selected':''}>${ordinal(d)}</option>`).join('');
+  h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
+    <h3>${ed?'Edit card':'＋ Add a card'}</h3>
+    <div class="cc-form">
+      <div class="field" style="margin:0"><label>Nickname</label><input id="ccName" class="input" maxlength="30" placeholder="e.g. Visa, Amex, TD" value="${ed?esc(ed.name):''}"></div>
+      <div class="field" style="margin:0"><label>Due on the</label><select id="ccDay" class="input">${opts}</select></div>
+    </div>
+    <div class="sub mt8">If a month is shorter (e.g. the 31st in February), Nest uses that month’s last day.</div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap">
+      ${ed?`<button class="btn danger" onclick="ccRemove('${ed.id}')">Remove</button><span style="flex:1"></span><button class="btn text" onclick="ccEdit(null)">Cancel</button>`:''}
+      <button class="btn filled" onclick="ccSave()">${ed?'Save':'Add card'}</button>
+    </div></div>`;
+  if(cards.length) h+=`<div class="sub" style="margin:4px 2px 10px">📅 <b>Add to calendar</b> downloads a monthly event with alerts 1 week before, 1 day before and on the day — open it to add it to your phone’s calendar so you’re reminded even when Nest is closed. (If your calendar drops the alerts on import, set them on the event yourself.)</div>`;
+  h+= ccFromTour
+    ? `<button class="btn outline block" onclick="ccBackToTour()">← Back to the tour</button>`
+    : `<button class="btn outline block" onclick="closeSheet()">Done</button>`;
+  return h;
+}
+function ccRefresh(){ openSheetHTMLKeep(sheetCards()); render(); }
+function ccEdit(id){ ccEditId=id; ccRefresh(); }
+function ccSave(){
+  const name=(document.getElementById('ccName').value||'').trim().slice(0,30);
+  const day=parseInt(document.getElementById('ccDay').value,10);
+  if(!name){ toast('Give the card a nickname'); return; }
+  if(!(day>=1&&day<=31)){ toast('Pick a due day'); return; }
+  const sp=data.personal; if(!sp) return;          // re-resolve at mutation time
+  sp.cards=asArray(sp.cards);
+  const ex=ccEditId?sp.cards.find(c=>c.id===ccEditId):null;
+  if(ex){ ex.name=name; ex.dueDay=day; logActivity('personal','💳','Edited card',name+' · due the '+ordinal(day)); toast('Card saved'); }
+  else { sp.cards.push({id:uid(),name,dueDay:day}); logActivity('personal','💳','Added card',name+' · due the '+ordinal(day)); toast('Card added'); }
+  try{ localStorage.setItem(CC_PROMPT_KEY,'1'); }catch(e){}
+  ccEditId=null; saveSpace('personal'); ccRefresh();
+}
+function ccRemove(id){
+  const sp=data.personal; if(!sp) return;
+  const c=asArray(sp.cards).find(x=>x.id===id); if(!c) return;
+  if(!confirm('Remove '+c.name+'? Its reminders will stop.')) return;
+  sp.cards=asArray(sp.cards).filter(x=>x.id!==id);
+  logActivity('personal','💳','Removed card',c.name);
+  ccEditId=null; saveSpace('personal'); ccRefresh(); toast('Card removed');
+}
+function ccBackToTour(){ ccFromTour=false; const s=document.getElementById('sheet'); if(!s) return; s.innerHTML=tutorialHTML(tutStep); s.scrollTop=0; bindTutSwipe(); }
+function icsEsc(t){ return String(t).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\r?\n/g,'\\n'); }
+function ccICS(card){
+  const day=Math.max(1,Math.min(31,parseInt(card.dueDay,10)||1));
+  const n=ccNextDue(card), d=n.date;
+  const ymd=x=>x.getFullYear()+String(x.getMonth()+1).padStart(2,'0')+String(x.getDate()).padStart(2,'0');
+  const end=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1);
+  // 31st → last day of every month; 29th/30th → that day, or the month's last day when it's shorter
+  const rule = day===31 ? 'FREQ=MONTHLY;BYMONTHDAY=-1'
+             : day>=29 ? 'FREQ=MONTHLY;BYMONTHDAY='+Array.from({length:day-27},(_,i)=>28+i).join(',')+';BYSETPOS=-1'
+             : 'FREQ=MONTHLY;BYMONTHDAY='+day;
+  const title='💳 '+card.name+' payment due';
+  const st=new Date(), stamp=st.getUTCFullYear()+String(st.getUTCMonth()+1).padStart(2,'0')+String(st.getUTCDate()).padStart(2,'0')+'T'+String(st.getUTCHours()).padStart(2,'0')+String(st.getUTCMinutes()).padStart(2,'0')+String(st.getUTCSeconds()).padStart(2,'0')+'Z';
+  const alarm=(trig,txt)=>['BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+icsEsc(txt),'TRIGGER:'+trig,'END:VALARM'];
+  return ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Nest//Card reminders//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH',
+    'BEGIN:VEVENT','UID:nest-card-'+card.id+'@nest','DTSTAMP:'+stamp,
+    'DTSTART;VALUE=DATE:'+ymd(d),'DTEND;VALUE=DATE:'+ymd(end),'RRULE:'+rule,
+    'SUMMARY:'+icsEsc(title),'DESCRIPTION:'+icsEsc('Reminder from Nest: your '+card.name+' credit card payment is due today.'),
+    'TRANSP:TRANSPARENT',
+    ...alarm('-P6DT15H', card.name+' is due in a week'),     // 9:00 am, 7 days before
+    ...alarm('-PT15H', card.name+' is due tomorrow'),        // 9:00 am the day before
+    ...alarm('PT9H', card.name+' is due today'),             // 9:00 am on the day
+    'END:VEVENT','END:VCALENDAR'].join('\r\n')+'\r\n';
+}
+function ccDownloadICS(id){
+  const c=ccCards().find(x=>x.id===id); if(!c) return;
+  const blob=new Blob([ccICS(c)],{type:'text/calendar;charset=utf-8'});
+  const fname='nest-'+(c.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'card')+'-due.ics';
+  const url=URL.createObjectURL(blob), a=document.createElement('a');
+  a.href=url; a.download=fname; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),4000);
+  toast('📅 Downloaded — open it to add to your calendar');
 }
 
 /* ---------- safe storage (localStorage throws inside data: URLs / private mode) ---------- */
@@ -915,7 +1077,7 @@ const BACKUP_KEEP_CLOUD = 30;        // daily cloud snapshots retained
 const BACKUP_KEEP_LOCAL = 7;         // on-device snapshots retained
 
 function blankSpace(){
-  return { categories:[], transactions:[], recurring:[], favourites:[], vendorMap:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], activity:[], inviteCode:null };
+  return { categories:[], transactions:[], recurring:[], favourites:[], cards:[], vendorMap:[], settings:{savingsGoal:0, paycheck:0}, members:{}, settlements:[], activity:[], inviteCode:null };
 }
 
 /* =====================================================================
@@ -1272,6 +1434,7 @@ function normalizeSpace(sp){
     activity: asArray(sp.activity),
     recurring: asArray(sp.recurring),
     favourites: asArray(sp.favourites),
+    cards: asArray(sp.cards),
     vendorMap: asArray(sp.vendorMap),
     settings: sp.settings || {savingsGoal:0, paycheck:0},
     members: sp.members || {},
@@ -1597,6 +1760,7 @@ function settleBalance(sp){
 function viewHome(){
   const sp=curSpace();
   let h = monthNav();
+  h += ccHomeHTML();
   const mtx=effMonthTx(sp,viewMonth);
   const income=sumBy(mtx,'income'), expense=sumBy(mtx,'expense'), savings=income-expense;
   const reflected = activeSpace==='personal' ? mtx.filter(t=>t._shared).reduce((a,t)=>a+(+t.amount||0),0) : 0;
@@ -3775,6 +3939,12 @@ function sheetSettings(){
     <h3>Appearance</h3>
     <button class="btn outline block" onclick="toggleTheme();openSheet('settings')">Toggle light / dark</button>
   </div>`;
+  {const nc=asArray(data.personal&&data.personal.cards).length;
+  h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
+    <h3>💳 Credit cards</h3>
+    <div class="sub mb8">${nc?`${nc} card${nc>1?'s':''} — reminders show on Home a week before, the day before and on the day each one is due.`:'Add your cards to get due-date reminders.'}</div>
+    <button class="btn outline block" onclick="openCards()">${nc?'Manage credit cards':'＋ Add credit cards'}</button>
+  </div>`;}
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
     <h3>Help</h3>
     <button class="btn outline block" onclick="openTutorial()">🎓 Replay the tour</button>
