@@ -657,8 +657,10 @@ const firebaseConfig = {
    APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
    together on every release. PATCH_NOTES is newest-first.
    ===================================================================== */
-const APP_VERSION = 20;
+const APP_VERSION = 21;
 const PATCH_NOTES = [
+  { v:21, date:'2026-11-19', title:'Card setup on first open', notes:[
+    'The first time you open Nest after this update, it takes you straight to 💳 Credit cards so you can add your cards and due dates. Tap “Not now” to skip — it won’t ask again.' ] },
   { v:20, date:'2026-11-19', title:'Credit card reminders', notes:[
     'Never miss a card payment: add your credit cards in ⚙️ Settings → 💳 Credit cards with a nickname and the day of the month each is due.',
     'Home shows a reminder from a week before, then “due tomorrow” and “due today”.',
@@ -746,7 +748,7 @@ function patchNotesListHTML(){
 function whatsNewSheetHTML(entries){
   const list = entries.map(e=>patchEntryHTML(e, e.v===APP_VERSION)).join('');
   return `<div class="grabber"></div>
-    <h2 style="margin:0 0 2px">✨ What’s New</h2>
+    <h2 id="whatsNewSheet" style="margin:0 0 2px">✨ What’s New</h2>
     <p class="sub" style="margin:0 0 14px">Here’s what changed since you were last here.</p>
     <div class="pn-list">${list}</div>
     <button class="btn filled" style="width:100%;margin-top:14px" onclick="closeSheet()">Got it</button>`;
@@ -834,7 +836,7 @@ function tutorialHTML(i){
   </div>`;
 }
 function markTutorialDone(){ try{ localStorage.setItem(TUTORIAL_KEY,'1'); }catch(e){} }
-function openTutorial(){ tutStep=0; markTutorialDone(); openSheetHTML(tutorialHTML(0)); bindTutSwipe(); }
+function openTutorial(){ tutStep=0; markTutorialDone(); try{ localStorage.setItem(CC_AUTO_KEY,'1'); }catch(e){} openSheetHTML(tutorialHTML(0)); bindTutSwipe(); }
 function tutGo(i){
   if(i<0||i>=TUTORIAL_STEPS.length) return;
   const s=document.getElementById('sheet'); if(!s||!document.getElementById('tutSheet')) return;
@@ -871,7 +873,28 @@ function maybeShowTutorial(){
    Home shows a banner from 7 days before through the due day; each card can be
    exported as a monthly .ics calendar event with alerts 1 week / 1 day / day of. */
 const CC_PROMPT_KEY = 'nest_ccPromptDone';
-let ccEditId = null, ccFromTour = false;
+const CC_AUTO_KEY = 'nest_ccAutoSetupDone';
+let ccEditId = null, ccFromTour = false, ccFromUpdate = false, ccAutoChecked = false;
+// First open after the card-reminders update: take existing users straight to card setup, once per device.
+// Brand-new users get the welcome tour instead (it has its own cards step and sets the key).
+function maybeAutoCardSetup(){
+  if(ccAutoChecked) return;
+  const sp=data.personal; if(!sp) return;            // wait for the first load
+  ccAutoChecked=true;
+  let done=false; try{ done=!!localStorage.getItem(CC_AUTO_KEY); }catch(e){ return; }
+  if(done) return;
+  const mark=()=>{ try{ localStorage.setItem(CC_AUTO_KEY,'1'); localStorage.setItem(CC_PROMPT_KEY,'1'); }catch(e){} };
+  if(asArray(sp.cards).length){ mark(); return; }    // already set up
+  let tutDone=false; try{ tutDone=!!localStorage.getItem(TUTORIAL_KEY); }catch(e){}
+  if(!tutDone && !asArray(sp.transactions).length && !asArray(sp.recurring).length) return;  // tour is about to show
+  setTimeout(()=>{
+    const s=document.getElementById('sheet');
+    // only replace the What's New popup; never interrupt anything else the user opened
+    if(s && s.classList.contains('show') && !document.getElementById('whatsNewSheet')) { ccAutoChecked=false; return; }
+    mark(); ccFromTour=false; ccFromUpdate=true; ccEditId=null;
+    openSheetHTML(sheetCards());
+  }, 600);
+}
 function ordinal(n){ const v=n%100; return n+((v>=11&&v<=13)?'th':({1:'st',2:'nd',3:'rd'}[n%10]||'th')); }
 function ccDueOn(y,m,day){ return new Date(y,m,Math.min(day,daysInMonth(y,m))); }
 // next due date on/after today (today counts), with whole days until it
@@ -910,11 +933,12 @@ function ccHomeHTML(){
   return h;
 }
 function ccDismissPrompt(){ try{ localStorage.setItem(CC_PROMPT_KEY,'1'); }catch(e){} render(); }
-function openCards(fromTour){ ccFromTour=!!fromTour; ccEditId=null; openSheetHTML(sheetCards()); }
+function openCards(fromTour){ ccFromTour=!!fromTour; ccFromUpdate=false; ccEditId=null; openSheetHTML(sheetCards()); }
 function sheetCards(){
   const cards=ccCards();
   const ed=ccEditId?cards.find(c=>c.id===ccEditId):null;
-  let h=`<div class="grabber"></div><h2>💳 Credit cards</h2>
+  let h=`<div class="grabber"></div>${ccFromUpdate?`<div class="pn-v" style="display:inline-block;margin-bottom:6px">✨ New</div>`:''}<h2>💳 Credit cards</h2>
+    ${ccFromUpdate?`<div class="sub mb8"><b>New: credit card reminders.</b> Add your cards below — or tap <b>Not now</b>. You can always find this in ⚙️ Settings.</div>`:''}
     <div class="sub mb8">Nest reminds you on Home a week before, the day before and on the day each card is due. Only you can see these.</div>`;
   if(cards.length){
     h+=`<div class="card" style="box-shadow:none;background:var(--surface-container);padding:6px 16px">`;
@@ -942,7 +966,7 @@ function sheetCards(){
   if(cards.length) h+=`<div class="sub" style="margin:4px 2px 10px">📅 <b>Add to calendar</b> downloads a monthly event with alerts 1 week before, 1 day before and on the day — open it to add it to your phone’s calendar so you’re reminded even when Nest is closed. (If your calendar drops the alerts on import, set them on the event yourself.)</div>`;
   h+= ccFromTour
     ? `<button class="btn outline block" onclick="ccBackToTour()">← Back to the tour</button>`
-    : `<button class="btn outline block" onclick="closeSheet()">Done</button>`;
+    : `<button class="btn outline block" onclick="closeSheet();render()">${ccFromUpdate&&!cards.length?'Not now':'Done'}</button>`;
   return h;
 }
 function ccRefresh(){ openSheetHTMLKeep(sheetCards()); render(); }
@@ -1111,6 +1135,7 @@ function bootTestMode(){
   loadTestData();
   showApp();
   maybeShowTutorial();
+  maybeAutoCardSetup();
 }
 function loadTestData(){
   // personal is per-user; shared is global
@@ -1217,6 +1242,7 @@ function attachPersonal(){
     if(!TEST_MODE) render();
     maybeBackup('personal');
     maybeShowTutorial();
+    maybeAutoCardSetup();
   }, err=>{
     if(err && err.code==='PERMISSION_DENIED') toast('Database rules not set yet — publish the security rules in Firebase.');
   });
