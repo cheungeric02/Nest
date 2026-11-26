@@ -213,6 +213,9 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .pace-brk .k{color:var(--on-surface-variant)}
 .pace-brk .keep b{color:var(--primary)}
 .pace-brk .spend-lbl{text-align:right}
+.pace-bar .s-loss{position:absolute;top:0;height:100%;background:var(--error-container);background-image:repeating-linear-gradient(135deg,transparent 0 6px,color-mix(in srgb,var(--error) 30%,transparent) 6px 12px)}
+.pace-brk .loss-lbl{text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 4px}
+.pace-brk .loss-lbl b{color:var(--error)}
 .pace-list{margin-top:16px;border-top:1px solid var(--outline-variant);padding-top:10px}
 .pace-li{display:flex;justify-content:space-between;font-size:.88rem;padding:5px 0}
 .pace-li .nm{color:var(--on-surface-variant);display:flex;align-items:center;gap:9px}
@@ -667,9 +670,9 @@ const firebaseConfig = {
    the last build in that version (so the top entry's v always === APP_VERSION).
    What's New only pops up when the display version changes.
    ===================================================================== */
-const APP_VERSION = 25;
+const APP_VERSION = 26;
 const PATCH_NOTES = [
-  { v:25, ver:'2.1', date:'2026-11-26', title:'Credit card reminders', notes:[
+  { v:26, ver:'2.1', date:'2026-11-26', title:'Credit card reminders', notes:[
     'Never miss a card payment: add your credit cards in ⚙️ Settings → 💳 Credit cards with a nickname and the day of the month each is due.',
     'Home shows a reminder from a week before, then “due tomorrow” and “due today”.',
     'Tap 📅 next to a card to add it to your phone’s calendar as a monthly event with alerts 1 week, 1 day and on the day — so you’re reminded even when Nest is closed.',
@@ -677,6 +680,7 @@ const PATCH_NOTES = [
     'The first time you open Nest after the update, it takes you straight to 💳 Credit cards. Tap “Not now” to skip — it won’t ask again.',
     'Settle-ups and loans in Shared: choose the date it happened, and tap ✏️ on any History entry to fix its amount, date or direction.',
     'Home’s projected net saved no longer disappears in the last few days of the month, and future months now show a planned net saved.',
+    'If you’re behind so far this month, the projected net saved bar shades the part of your incoming money that covers it in red, so the whole bar adds up.',
     'Simpler version numbers: Nest now goes 1.0, 1.1 … 2.0, 2.1, and small fixes no longer get their own number. The build number is in grey at the bottom of Settings.' ] },
   { v:19, ver:'2.0', date:'2026-11-05', title:'Welcome tour', notes:[
     'New to Nest? A quick 6-step tour now walks you through adding spending, planning your month, Insights, the Shared budget and backups.',
@@ -2033,6 +2037,10 @@ function onPaceCard(savings, expectedIncome, remainingBudget, futureYM){
   if(netW>0.3) bar+=`<div class="seg s-net" style="width:${netW.toFixed(1)}%"></div>`;
   if(incW>0.3) bar+=`<div class="seg s-inc" style="width:${incW.toFixed(1)}%"></div>`;
   if(spendW>0.3) bar+=`<div class="s-spend" style="width:${spendW.toFixed(1)}%"></div>`;
+  // behind so far this month: the slice of incoming money that just covers that deficit
+  const loss = netSoFar < -0.5 ? -netSoFar : 0;
+  const lossW = loss ? Math.max(0, 100 - spendW - keepW) : 0;
+  if(lossW>0.3) bar+=`<div class="s-loss" style="left:${keepW.toFixed(1)}%;width:${lossW.toFixed(1)}%"></div>`;
   if(spend>0.5 && projNet>0.5 && keepW>1 && keepW<99) bar+=`<div class="divider" style="left:${keepW.toFixed(1)}%"></div>`;
   bar+=`</div>`;
 
@@ -2040,7 +2048,8 @@ function onPaceCard(savings, expectedIncome, remainingBudget, futureYM){
   if(spend>0.5 && projNet>0.5){
     brk=`<div class="pace-brk">
       <div class="keep" style="width:${keepW.toFixed(1)}%"><span class="k">keep · </span><b>${fmt0(projNet)}</b></div>
-      <div class="spend-lbl" style="width:${(100-keepW).toFixed(1)}%"><span class="k">to spend · ${fmt0(spend)}</span></div>
+      ${lossW>0.3?`<div class="loss-lbl" style="width:${lossW.toFixed(1)}%"><span class="k">covers </span><b>−${fmt0(loss)}</b><span class="k"> so far</span></div>`:''}
+      <div class="spend-lbl" style="width:${(100-keepW-(lossW>0.3?lossW:0)).toFixed(1)}%"><span class="k">to spend · ${fmt0(spend)}</span></div>
     </div>`;
   }
 
