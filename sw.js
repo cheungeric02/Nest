@@ -1,5 +1,5 @@
 /* Nest service worker — offline shell cache */
-const CACHE = 'nest-v21';
+const CACHE = 'nest-v21.1';
 const ASSETS = ['./', './index.html', './manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {

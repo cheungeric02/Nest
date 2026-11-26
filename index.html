@@ -657,8 +657,10 @@ const firebaseConfig = {
    APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
    together on every release. PATCH_NOTES is newest-first.
    ===================================================================== */
-const APP_VERSION = 21;
+const APP_VERSION = 21.1;
 const PATCH_NOTES = [
+  { v:21.1, date:'2026-11-26', title:'Pick the settle-up date', notes:[
+    'When you record a settle-up or a loan in Shared, you can now choose the date it happened — handy for logging a transfer after the fact. It defaults to today.' ] },
   { v:21, date:'2026-11-19', title:'Card setup on first open', notes:[
     'The first time you open Nest after this update, it takes you straight to 💳 Credit cards so you can add your cards and due dates. Tap “Not now” to skip — it won’t ask again.' ] },
   { v:20, date:'2026-11-19', title:'Credit card reminders', notes:[
@@ -759,7 +761,7 @@ let whatsNewChecked=false;
 function maybeShowWhatsNew(){
   if(whatsNewChecked) return; whatsNewChecked=true;
   let last=null;
-  try{ const raw=localStorage.getItem(LAST_SEEN_KEY); if(raw!=null) last=parseInt(raw,10); }
+  try{ const raw=localStorage.getItem(LAST_SEEN_KEY); if(raw!=null) last=parseFloat(raw); }
   catch(e){ return; }   // can't read the store → never risk showing it every load
   if(last!=null && !isFinite(last)) last=null;
   // Fresh install (no prior Nest data at boot): record silently, no popup.
@@ -3808,6 +3810,7 @@ function closeReceiptViewer(){ const v=document.getElementById('rcViewer'); if(v
 //   wording, icon and defaults differ — so a loan is stored as a settlement with kind:'loan'.
 let _settleYouPay = true;
 let _transferMode = 'settle';
+let _settleDate = '';   // chosen date for the open sheet ('' = today)
 let _settleBal = null; // balance snapshot for the open sheet (preview/pay-in-full reuse it per keystroke)
 // settle: whoever owes pays. lend: you lend by default (You -> partner).
 function defaultYouPay(mode,bal){ return mode==='lend' || !bal ? true : bal.net<=0; }
@@ -3815,6 +3818,7 @@ function openTransfer(forceMode){
   const bal=settleBalance(curSpace()); if(!bal) return;
   _transferMode = forceMode || (Math.abs(bal.net)>=0.01 ? 'settle' : 'lend');
   _settleYouPay = defaultYouPay(_transferMode,bal);
+  _settleDate = todayStr();
   renderSettleSheet(true);
 }
 function setTransferMode(m){
@@ -3847,6 +3851,7 @@ function renderSettleSheet(resetAmt){
   const payee=_settleYouPay?oName:'You';
   const even=settleEvenAmt(bal);
   const cur = resetAmt ? (lend?0:even) : (parseFloat((document.getElementById('settleAmt')||{}).value)||0);
+  const today=todayStr(); if(!_settleDate || _settleDate>today) _settleDate=today;
   const bLine = Math.abs(bal.net)<0.01 ? `You're all settled with ${oName}.`
      : bal.net>0 ? `${oName} currently owes you <b>${fmt(bal.net)}</b>.`
      : `You currently owe ${oName} <b>${fmt(-bal.net)}</b>.`;
@@ -3879,6 +3884,8 @@ function renderSettleSheet(resetAmt){
         <input id="settleAmt" class="input" type="number" inputmode="decimal" step="0.01" value="${cur>0?cur.toFixed(2):''}" oninput="settlePreview()" placeholder="0.00"></div>
       ${(!lend&&even>0.005)?`<button class="btn text" style="padding:8px 0;font-size:.82rem" onclick="settleFull()">Pay in full · ${fmt(even)}</button>`:''}
     </div>
+    <div class="field"><label>Date</label>
+      <input id="settleDate" class="input" type="date" value="${_settleDate}" max="${today}" oninput="_settleDate=this.value" onchange="_settleDate=this.value"></div>
     <div id="settlePrev" class="settle-prev"></div>
     <button class="btn filled block" onclick="recordSettle()">${lend?'Record loan':'Record transfer'}</button>
     ${hist}`;
@@ -3918,13 +3925,18 @@ function recordSettle(){
   const sp=curSpace(); const bal=settleBalance(sp); if(!bal) return;
   const amt=parseFloat(document.getElementById('settleAmt').value)||0; if(amt<=0){toast('Enter an amount');return;}
   const lend=_transferMode==='lend';
-  const s={id:uid(), date:todayStr(), kind: lend?'loan':'settle',
+  const today=todayStr();
+  let date=(document.getElementById('settleDate')||{}).value||_settleDate||today;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) date=today;
+  if(date>today){ toast("Date can't be in the future"); return; }
+  const s={id:uid(), date, at:Date.now(), kind: lend?'loan':'settle',
     from:_settleYouPay?user.uid:bal.other, to:_settleYouPay?bal.other:user.uid, amount:Math.round(amt*100)/100};
   sp.settlements=asArray(sp.settlements);
   sp.settlements.push(s);
   logXfer(sp, lend?'💸':'🤝', lend?'Recorded a loan':'Recorded settle-up', s);
   saveSpace('shared'); render();
-  toast('Recorded '+fmt(amt));
+  toast('Recorded '+fmt(amt)+(date!==today?' · '+fmtDay(date):''));
+  _settleDate=today;
   renderSettleSheet(true); // keep sheet open, refreshed with the new balance + history
 }
 function deleteSettle(id){
