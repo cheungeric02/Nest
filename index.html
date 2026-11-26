@@ -187,6 +187,8 @@ h1,h2,h3,h4{margin:0;font-weight:600}
 .settle-row .sub{font-size:.74rem;margin-top:2px}
 .settle-del{border:none;background:none;font-size:1.05rem;cursor:pointer;opacity:.6;padding:6px;flex:none}
 .settle-del:active{opacity:1}
+.settle-row.editing{background:var(--secondary-container);border-radius:12px;padding-left:10px;padding-right:4px}
+.settle-acts{display:flex;flex:none}
 
 /* leftover / month-end nudge */
 .leftover-remind{background:var(--primary-container);color:var(--on-primary-container)}
@@ -657,8 +659,10 @@ const firebaseConfig = {
    APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
    together on every release. PATCH_NOTES is newest-first.
    ===================================================================== */
-const APP_VERSION = 22;
+const APP_VERSION = 23;
 const PATCH_NOTES = [
+  { v:23, date:'2026-11-26', title:'Edit settle-up history', notes:[
+    'Made a mistake? Tap ✏️ on any entry in the Shared settle-up History to change its amount, date, direction, or whether it was a settle-up or a loan. Balances update right away.' ] },
   { v:22, date:'2026-11-26', title:'Pick the settle-up date', notes:[
     'When you record a settle-up or a loan in Shared, you can now choose the date it happened — handy for logging a transfer after the fact. It defaults to today.' ] },
   { v:21, date:'2026-11-19', title:'Card setup on first open', notes:[
@@ -3810,6 +3814,7 @@ function closeReceiptViewer(){ const v=document.getElementById('rcViewer'); if(v
 //   wording, icon and defaults differ — so a loan is stored as a settlement with kind:'loan'.
 let _settleYouPay = true;
 let _transferMode = 'settle';
+let _settleEditId = null; // id of the history entry being edited (null = recording a new one)
 let _settleDate = '';   // chosen date for the open sheet ('' = today)
 let _settleBal = null; // balance snapshot for the open sheet (preview/pay-in-full reuse it per keystroke)
 // settle: whoever owes pays. lend: you lend by default (You -> partner).
@@ -3818,14 +3823,26 @@ function openTransfer(forceMode){
   const bal=settleBalance(curSpace()); if(!bal) return;
   _transferMode = forceMode || (Math.abs(bal.net)>=0.01 ? 'settle' : 'lend');
   _settleYouPay = defaultYouPay(_transferMode,bal);
-  _settleDate = todayStr();
+  _settleDate = todayStr(); _settleEditId = null;
   renderSettleSheet(true);
 }
+// Edit an existing settle-up/loan: reuse the same sheet, pre-filled, in "edit" mode.
+function editSettle(id){
+  const sp=curSpace(); if(!sp) return;
+  const s=asArray(sp.settlements).find(x=>x.id===id); if(!s) return;
+  _settleEditId=id;
+  _transferMode = s.kind==='loan' ? 'lend' : 'settle';
+  _settleYouPay = s.from===user.uid;
+  _settleDate = s.date || todayStr();
+  renderSettleSheet(false, +s.amount||0);
+  const el=document.querySelector('#sheet .sheet') || document.getElementById('sheet'); if(el && el.scrollTo) el.scrollTo(0,0);
+}
+function cancelSettleEdit(){ _settleEditId=null; _settleDate=todayStr(); _settleYouPay=defaultYouPay(_transferMode,_settleBal); renderSettleSheet(true); }
 function setTransferMode(m){
   if(_transferMode===m) return;
   _transferMode=m;
   _settleYouPay = defaultYouPay(m,_settleBal);
-  renderSettleSheet(true); // fresh amount — don't carry a settle-up figure over as a loan
+  renderSettleSheet(!_settleEditId); // fresh amount — don't carry a settle-up figure over as a loan (editing keeps it)
 }
 function settleSwap(){ _settleYouPay=!_settleYouPay; renderSettleSheet(false); }
 function settleEvenAmt(bal){ return _settleYouPay ? Math.max(0,-bal.net) : Math.max(0,bal.net); }
@@ -3843,14 +3860,19 @@ function xferText(sp,s,thirdPerson){
   const obj  = !thirdPerson && s.to===user.uid ? 'you' : memberName(sp,s.to);
   return `${subj} ${verb} ${obj}`;
 }
-function renderSettleSheet(resetAmt){
-  const sp=curSpace(); const bal=settleBalance(sp); _settleBal=bal; if(!bal){ closeSheet(); return; }
+function renderSettleSheet(resetAmt, presetAmt){
+  const sp=curSpace(); if(!sp){ closeSheet(); return; }
+  if(_settleEditId && !asArray(sp.settlements).some(x=>x.id===_settleEditId)) _settleEditId=null; // deleted elsewhere
+  const editing=!!_settleEditId;
+  // while editing, show the balance as if this entry didn't exist yet
+  const bal=settleBalance(editing ? Object.assign({},sp,{settlements:asArray(sp.settlements).filter(x=>x.id!==_settleEditId)}) : sp);
+  _settleBal=bal; if(!bal){ closeSheet(); return; }
   const lend=_transferMode==='lend';
   const oName=esc(bal.otherName);
   const payer=_settleYouPay?'You':oName;
   const payee=_settleYouPay?oName:'You';
   const even=settleEvenAmt(bal);
-  const cur = resetAmt ? (lend?0:even) : (parseFloat((document.getElementById('settleAmt')||{}).value)||0);
+  const cur = presetAmt!=null ? presetAmt : resetAmt ? (lend?0:even) : (parseFloat((document.getElementById('settleAmt')||{}).value)||0);
   const today=todayStr(); if(!_settleDate || _settleDate>today) _settleDate=today;
   const bLine = Math.abs(bal.net)<0.01 ? `You're all settled with ${oName}.`
      : bal.net>0 ? `${oName} currently owes you <b>${fmt(bal.net)}</b>.`
@@ -3861,13 +3883,16 @@ function renderSettleSheet(resetAmt){
   if(sets.length){
     hist=`<div class="settle-hist"><div class="sub" style="margin:16px 0 4px;font-weight:700;color:var(--on-surface)">History</div>`;
     sets.forEach(s=>{
-      hist+=`<div class="settle-row"><div><b>${fmt(+s.amount||0)}</b> <span class="muted">· ${s.kind==='loan'?'💸':'🤝'} ${esc(xferText(sp,s))}</span><div class="sub">${fmtDay(s.date)}</div></div>
-        <button class="settle-del" onclick="deleteSettle('${s.id}')" title="Delete this entry">🗑️</button></div>`;
+      hist+=`<div class="settle-row${s.id===_settleEditId?' editing':''}"><div><b>${fmt(+s.amount||0)}</b> <span class="muted">· ${s.kind==='loan'?'💸':'🤝'} ${esc(xferText(sp,s))}</span><div class="sub">${fmtDay(s.date)}</div></div>
+        <div class="settle-acts"><button class="settle-del" onclick="editSettle('${s.id}')" title="Edit this entry">✏️</button>
+        <button class="settle-del" onclick="deleteSettle('${s.id}')" title="Delete this entry">🗑️</button></div></div>`;
     });
     hist+=`</div>`;
   }
   const dirVerb = lend ? (_settleYouPay?'You lend':payer+' lends') : (_settleYouPay?'You transfer':payer+' transfers');
-  const html=`<div class="grabber"></div><h2>${lend?'Lend money':'Record a settle-up'}</h2>
+  const title = editing ? (lend?'Edit loan':'Edit settle-up') : (lend?'Lend money':'Record a settle-up');
+  const html=`<div class="grabber"></div><h2>${title}</h2>
+    ${editing?`<p class="sub" style="margin:-4px 0 10px">Editing an entry from History — balances below leave it out until you save.</p>`:''}
     <div class="flex" style="gap:8px;margin:0 0 12px">
       <button class="chip${lend?'':' active'}" style="flex:1;text-align:center" onclick="setTransferMode('settle')">🤝 Settle up</button>
       <button class="chip${lend?' active':''}" style="flex:1;text-align:center" onclick="setTransferMode('lend')">💸 Lend money</button>
@@ -3887,7 +3912,8 @@ function renderSettleSheet(resetAmt){
     <div class="field"><label>Date</label>
       <input id="settleDate" class="input" type="date" value="${_settleDate}" max="${today}" oninput="_settleDate=this.value" onchange="_settleDate=this.value"></div>
     <div id="settlePrev" class="settle-prev"></div>
-    <button class="btn filled block" onclick="recordSettle()">${lend?'Record loan':'Record transfer'}</button>
+    <button class="btn filled block" onclick="recordSettle()">${editing?'Save changes':lend?'Record loan':'Record transfer'}</button>
+    ${editing?`<button class="btn outline block" style="margin-top:8px" onclick="cancelSettleEdit()">Cancel edit</button>`:''}
     ${hist}`;
   openSheetHTML(html);
   settlePreview();
@@ -3929,9 +3955,20 @@ function recordSettle(){
   let date=(document.getElementById('settleDate')||{}).value||_settleDate||today;
   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) date=today;
   if(date>today){ toast("Date can't be in the future"); return; }
-  const s={id:uid(), date, at:Date.now(), kind: lend?'loan':'settle',
+  const fields={date, kind: lend?'loan':'settle',
     from:_settleYouPay?user.uid:bal.other, to:_settleYouPay?bal.other:user.uid, amount:Math.round(amt*100)/100};
   sp.settlements=asArray(sp.settlements);
+  if(_settleEditId){
+    const ex=sp.settlements.find(x=>x.id===_settleEditId);
+    if(!ex){ _settleEditId=null; toast('That entry was removed'); renderSettleSheet(true); return; }
+    Object.assign(ex, fields, {editedAt:Date.now()});
+    logXfer(sp,'✏️', lend?'Edited a loan':'Edited settle-up', ex);
+    _settleEditId=null; _settleDate=today;
+    saveSpace('shared'); render(); toast('Saved changes');
+    renderSettleSheet(true);
+    return;
+  }
+  const s=Object.assign({id:uid(), at:Date.now()}, fields);
   sp.settlements.push(s);
   logXfer(sp, lend?'💸':'🤝', lend?'Recorded a loan':'Recorded settle-up', s);
   saveSpace('shared'); render();
