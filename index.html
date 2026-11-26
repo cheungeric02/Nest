@@ -656,82 +656,72 @@ const firebaseConfig = {
 
 /* =====================================================================
    VERSION + PATCH NOTES
-   APP_VERSION MUST equal the sw.js cache number (nest-v<N>) — bump BOTH
-   together on every release. PATCH_NOTES is newest-first.
+   Two numbers:
+   • APP_VERSION = BUILD number (integer). Goes up by 1 on EVERY push and MUST
+     equal the sw.js cache number (nest-v<N>) — that's how phones pick up updates.
+   • Display version ("ver", e.g. '2.1') = what people see. New FEATURE → new
+     minor (2.1 → 2.2); a new era → new major (→ 3.0). Small follow-ups/fixes
+     DON'T get a new display version: fold them into the top entry instead —
+     add bullets and set its v to the new build.
+   PATCH_NOTES is newest-first, ONE entry per display version; each entry's v is
+   the last build in that version (so the top entry's v always === APP_VERSION).
+   What's New only pops up when the display version changes.
    ===================================================================== */
-const APP_VERSION = 23;
+const APP_VERSION = 24;
 const PATCH_NOTES = [
-  { v:23, date:'2026-11-26', title:'Edit settle-up history', notes:[
-    'Made a mistake? Tap ✏️ on any entry in the Shared settle-up History to change its amount, date, direction, or whether it was a settle-up or a loan. Balances update right away.' ] },
-  { v:22, date:'2026-11-26', title:'Pick the settle-up date', notes:[
-    'When you record a settle-up or a loan in Shared, you can now choose the date it happened — handy for logging a transfer after the fact. It defaults to today.' ] },
-  { v:21, date:'2026-11-19', title:'Card setup on first open', notes:[
-    'The first time you open Nest after this update, it takes you straight to 💳 Credit cards so you can add your cards and due dates. Tap “Not now” to skip — it won’t ask again.' ] },
-  { v:20, date:'2026-11-19', title:'Credit card reminders', notes:[
+  { v:24, ver:'2.1', date:'2026-11-26', title:'Credit card reminders', notes:[
     'Never miss a card payment: add your credit cards in ⚙️ Settings → 💳 Credit cards with a nickname and the day of the month each is due.',
     'Home shows a reminder from a week before, then “due tomorrow” and “due today”.',
     'Tap 📅 next to a card to add it to your phone’s calendar as a monthly event with alerts 1 week, 1 day and on the day — so you’re reminded even when Nest is closed.',
-    'Due on the 31st? In shorter months Nest uses the last day of the month.' ] },
-  { v:19, date:'2026-11-05', title:'Welcome tour', notes:[
+    'Due on the 31st? In shorter months Nest uses the last day of the month.',
+    'The first time you open Nest after the update, it takes you straight to 💳 Credit cards. Tap “Not now” to skip — it won’t ask again.',
+    'Settle-ups and loans in Shared: choose the date it happened, and tap ✏️ on any History entry to fix its amount, date or direction.',
+    'Simpler version numbers: Nest now goes 1.0, 1.1 … 2.0, 2.1, and small fixes no longer get their own number. The build number is in grey at the bottom of Settings.' ] },
+  { v:19, ver:'2.0', date:'2026-11-05', title:'Welcome tour', notes:[
     'New to Nest? A quick 6-step tour now walks you through adding spending, planning your month, Insights, the Shared budget and backups.',
     'Replay it any time from ⚙️ Settings → Help → Replay the tour.' ] },
-  { v:18, date:'2026-10-25', title:'Brackets & receipt photos', notes:[
+  { v:18, ver:'1.9', date:'2026-10-25', title:'Brackets & receipt photos', notes:[
     'The calculator has brackets now — try (12.50 + 8) × 2. A new top row adds ( ) and C (clear).',
     'New % key works like a phone calculator: 45 + 15% adds a 15% tip, 200 × 10% = 20.',
     'Attach up to 3 receipt photos to any transaction — snap one with the camera or pick from your gallery. Tap a photo to see it full-screen.',
     'Transactions with a receipt show a 🧾 tag in Activity. Receipts on Shared entries are visible to both of you.' ] },
-  { v:17, date:'2026-10-10', title:'Settle-up & loan polish', notes:[
-    'Loans and settle-ups in the Activity log now read correctly for both of you (“Alex lent you” on your phone, “You lent …” on theirs).',
-    'Switching between Settle up and Lend money starts with a fresh amount, and same-day history lists the newest first.',
-    'Names with special characters display safely in the settle-up sheet.' ] },
-  { v:16, date:'2026-10-05', title:'Lend money in Shared', notes:[
-    'New in Shared: record when one of you lends the other cash. Open the settle-up card and switch to “💸 Lend money”.',
-    'A loan adds to what the borrower owes and shows up in the Activity feed and settle-up history as “You lent …” / “… lent you”, kept distinct from a repayment.' ] },
-  { v:15, date:'2026-10-05', title:'Paid-for-partner split', notes:[
+  { v:17, ver:'1.8', date:'2026-10-10', title:'Lend money & paid-for splits', notes:[
     'New Shared split option: “Paid for …” — when one of you covers something entirely for the other (forgot your wallet), the whole amount goes on their side.',
-    'The Activity feed now spells out who paid for whom, and settle-up updates automatically.' ] },
-  { v:14, date:'2026-09-21', title:'Patch Notes & What’s New', notes:[
-    'See every update in Settings → Patch Notes, newest first.',
-    'A one-time “What’s New” note now pops up after each update.' ] },
-  { v:13, date:'2026-09-14', title:'Activity history & smarter recurring', notes:[
+    'Record when one of you lends the other cash: open the settle-up card and switch to “💸 Lend money”. A loan adds to what the borrower owes and is kept distinct from a repayment.',
+    'The Activity feed spells out who paid or lent whom, worded correctly for each of you (“Alex lent you” on your phone, “You lent …” on theirs).',
+    'Switching between Settle up and Lend money starts with a fresh amount, and same-day history lists the newest first.' ] },
+  { v:14, ver:'1.7', date:'2026-09-21', title:'Activity history & smarter recurring', notes:[
     'New Activity → Changes log — your Personal history stays private, Shared history is visible to both of you.',
     'Deleting or editing a recurring entry now asks whether to include past entries or only future ones.',
-    'Same-day entries list newest first; Shared Insights switched to expense-only charts.' ] },
-  { v:12, date:'2026-09-12', title:'Savings goals & simpler Shared home', notes:[
-    'Savings pools show a target, an ETA, and a “balance as of” date; a house down-payment can be split per partner.',
-    'Shared Home slimmed down: dropped the income tiles and 50/30/20 card, settle-up is now a one-line widget.' ] },
-  { v:11, date:'2026-09-11', title:'Settle-up & shared budgeting', notes:[
+    'Same-day entries list newest first; Shared Insights switched to expense-only charts.',
+    'See every update in Settings → Patch Notes, and a one-time “What’s New” note after each update.' ] },
+  { v:12, ver:'1.6', date:'2026-09-12', title:'Settle-up & savings goals', notes:[
     'Record partial settle-up transfers with direction and a running history.',
-    'Shared Home’s on-pace card reframed around spend-vs-budget.' ] },
-  { v:10, date:'2026-09-10', title:'Period selectors', notes:[
-    'Budget-vs-actual on Home and the Insights actuals card can now show trailing 3 / 6 / 12 months, YTD, or a custom range.' ] },
-  { v:9, date:'2026-09-08', title:'CSV statement import', notes:[
-    'Import transactions from a bank CSV with a reconciliation review step.',
-    'The review list keeps its place and has Select / Deselect all.' ] },
-  { v:8, date:'2026-09-07', title:'Savings pools & favourites', notes:[
+    'Savings pools show a target, an ETA, and a “balance as of” date; a house down-payment can be split per partner.',
+    'Shared Home slimmed down and reframed around spend-vs-budget; settle-up is now a one-line widget.' ] },
+  { v:10, ver:'1.5', date:'2026-09-10', title:'CSV statement import', notes:[
+    'Import transactions from a bank CSV with a reconciliation review step (keeps its place, Select / Deselect all).',
+    'Budget-vs-actual on Home and the Insights actuals card can show trailing 3 / 6 / 12 months, YTD, or a custom range.' ] },
+  { v:8, ver:'1.4', date:'2026-09-07', title:'Savings pools & favourites', notes:[
     'Add running “savings pool” categories (sinking funds) tracked on a running balance instead of monthly.',
     'Star ⭐ favourites for one-tap quick-add.' ] },
-  { v:7, date:'2026-09-07', title:'Navigation & dates', notes:[
-    'Bigger raised center ＋ button; the phone back-gesture no longer exits the app.',
-    'Dates now shown month-day-year throughout.' ] },
-  { v:6, date:'2026-09-07', title:'Insights & budget bars', notes:[
-    'Redesigned Insights with an Income · Expenses · Savings chart and a compact 6-month trend.',
-    'Clearer green / amber / red budget bars.' ] },
-  { v:5, date:'2026-09-07', title:'Planning tools', notes:[
-    'Project your end-of-month leftover on Home.',
-    'Plan gained an income-split donut and %-of-income budgets.' ] },
-  { v:4, date:'2026-09-07', title:'Data safety', notes:[
+  { v:7, ver:'1.3', date:'2026-09-07', title:'Planning & Insights', notes:[
+    'Project your end-of-month leftover on Home; Plan gained an income-split donut and %-of-income budgets.',
+    'Redesigned Insights with an Income · Expenses · Savings chart and a compact 6-month trend; clearer green / amber / red budget bars.',
+    'Bigger raised center ＋ button, the phone back-gesture no longer exits the app, and dates show month-day-year.' ] },
+  { v:4, ver:'1.2', date:'2026-09-07', title:'Data safety', notes:[
     'Honest save status, an on-device backup mirror, and cloud + local backups with restore.',
     'Fixed an edit that could fail to save to the cloud.' ] },
-  { v:3, date:'2026-09-07', title:'Add flow & categories', notes:[
+  { v:3, ver:'1.1', date:'2026-09-07', title:'Add flow & categories', notes:[
     'Add sheet gained a Personal / Shared chooser and custom % split.',
     'Calculator math in the amount field; edit and create categories, including an inline ＋ New.' ] },
-  { v:2, date:'2026-09-06', title:'Live & recurring', notes:[
-    'Went live with Google sign-in and cloud sync.',
-    'Bi-weekly paycheck income, 50/30/20 recommended budgets, and recurring entries with shared→personal reflection.' ] },
-  { v:1, date:'2026-09-06', title:'Nest launches', notes:[
-    'First release: a budget planner with Personal and Shared spaces, categories, and quick add.' ] },
+  { v:2, ver:'1.0', date:'2026-09-06', title:'Nest launches', notes:[
+    'A budget planner with Personal and Shared spaces, categories, and quick add.',
+    'Google sign-in and cloud sync, bi-weekly paycheck income, 50/30/20 recommended budgets, and recurring entries.' ] },
 ];
+const APP_DISPLAY = PATCH_NOTES[0].ver;   // what people see, e.g. "2.1"
+// Display version a given build belongs to (entries are newest-first; each v = last build of that version).
+function verOfBuild(b){ for(let i=PATCH_NOTES.length-1;i>=0;i--){ if(PATCH_NOTES[i].v>=b) return PATCH_NOTES[i].ver; } return APP_DISPLAY; }
 const LAST_SEEN_KEY = 'nest_lastSeenVer';   // namespaced: all my apps share one github.io localStorage
 let HAD_PRIOR_DATA = false;                  // set at boot start, before any seeding, from existing nest_ data keys
 
@@ -740,7 +730,7 @@ function patchEntryHTML(e, isCurrent){
   const bullets = (e.notes||[]).map(n=>`<li>${esc(n)}</li>`).join('');
   return `<div class="pn-entry${isCurrent?' current':''}">
     <div class="pn-head">
-      <span class="pn-v">v${esc(e.v)}</span>
+      <span class="pn-v">${esc(e.ver)}</span>
       <span class="pn-title">${esc(e.title)}</span>
       ${isCurrent?'<span class="pn-badge">Current</span>':''}
       <span class="pn-date">${esc(e.date)}</span>
@@ -773,10 +763,12 @@ function maybeShowWhatsNew(){
   // Existing user already current: nothing to show.
   if(last!=null && last>=APP_VERSION) return;
   // Which entries to show: existing pre-feature user (no key) → latest only;
-  // otherwise the full delta of everything newer than what they last saw.
+  // otherwise every display version newer than the one they last saw. A small
+  // follow-up build inside the same display version updates the key quietly.
+  const lastVer = last==null ? null : verOfBuild(last);
   const entries = (last==null)
     ? PATCH_NOTES.slice(0,1)
-    : PATCH_NOTES.filter(e=>e.v>last);
+    : PATCH_NOTES.filter(e=>e.v>last && e.ver!==lastVer);
   if(!entries.length){ try{ localStorage.setItem(LAST_SEEN_KEY, String(APP_VERSION)); }catch(e){} return; }
   // Write the seen marker the moment we show it, so it appears exactly once.
   try{ localStorage.setItem(LAST_SEEN_KEY, String(APP_VERSION)); }catch(e){}
@@ -4032,10 +4024,10 @@ function sheetSettings(){
     ${TEST_MODE?`<button class="btn danger block" onclick="resetTest()">Reset test data</button>`:`<button class="btn danger block" onclick="doSignOut()">Sign out</button>`}
   </div>`;
   h+=`<div class="card" style="box-shadow:none;background:var(--surface-container)">
-    <div class="between mb8"><h3 style="margin:0">Patch Notes</h3><span class="pn-v">v${APP_VERSION}</span></div>
+    <div class="between mb8"><h3 style="margin:0">Patch Notes</h3><span class="pn-v">${APP_DISPLAY}</span></div>
     <div class="pn-list pn-list-scroll">${patchNotesListHTML()}</div>
   </div>`;
-  h+=`<div class="sub" style="text-align:center;margin-top:8px">Nest · ${TEST_MODE?'test mode · ':''}v${APP_VERSION}</div>`;
+  h+=`<div class="sub" style="text-align:center;margin-top:8px">Nest ${APP_DISPLAY} · ${TEST_MODE?'test mode · ':''}<span style="opacity:.6">build ${APP_VERSION}</span></div>`;
   return h;
 }
 function sheetManageCats(){
